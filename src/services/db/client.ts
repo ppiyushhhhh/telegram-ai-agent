@@ -119,4 +119,57 @@ export class DatabaseService {
       .bind(id, eventType, userId || null, chatId || null, payload ? JSON.stringify(payload) : null)
       .run();
   }
+
+  public async getAllUsers(): Promise<DbUser[]> {
+    const res = await this.db.prepare('SELECT * FROM users ORDER BY updated_at DESC').all<DbUser>();
+    return res.results || [];
+  }
+
+  public async setUserAllowed(userId: number, allowed: boolean): Promise<boolean> {
+    const res = await this.db
+      .prepare('UPDATE users SET is_allowed = ?, updated_at = datetime(\'now\') WHERE id = ?')
+      .bind(allowed ? 1 : 0, userId)
+      .run();
+    return res.success;
+  }
+
+  public async getAllConversations(limit = 50): Promise<DbConversation[]> {
+    const res = await this.db
+      .prepare('SELECT * FROM conversations ORDER BY updated_at DESC LIMIT ?')
+      .bind(limit)
+      .all<DbConversation>();
+    return res.results || [];
+  }
+
+  public async getAuditLogs(limit = 100): Promise<any[]> {
+    const res = await this.db
+      .prepare('SELECT * FROM audit_logs ORDER BY created_at DESC LIMIT ?')
+      .bind(limit)
+      .all();
+    return res.results || [];
+  }
+
+  public async getStats(): Promise<{
+    totalUsers: number;
+    allowedUsers: number;
+    totalConversations: number;
+    totalMessages: number;
+    totalAuditLogs: number;
+  }> {
+    const [u, au, c, m, a] = await Promise.all([
+      this.db.prepare('SELECT count(*) as count FROM users').first<{ count: number }>(),
+      this.db.prepare('SELECT count(*) as count FROM users WHERE is_allowed = 1').first<{ count: number }>(),
+      this.db.prepare('SELECT count(*) as count FROM conversations').first<{ count: number }>(),
+      this.db.prepare('SELECT count(*) as count FROM messages').first<{ count: number }>(),
+      this.db.prepare('SELECT count(*) as count FROM audit_logs').first<{ count: number }>()
+    ]);
+
+    return {
+      totalUsers: u?.count || 0,
+      allowedUsers: au?.count || 0,
+      totalConversations: c?.count || 0,
+      totalMessages: m?.count || 0,
+      totalAuditLogs: a?.count || 0
+    };
+  }
 }

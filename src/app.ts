@@ -5,6 +5,7 @@ import { loggerMiddleware } from './middleware/logger';
 import { errorHandler, notFoundHandler } from './middleware/error-handler';
 import { healthRouter } from './routes/health';
 import { telegramRouter } from './routes/telegram';
+import { adminRouter } from './routes/admin';
 import { APP_NAME, APP_VERSION } from './config/constants';
 
 export function createApp(): Hono<{ Bindings: Env; Variables: AppVariables }> {
@@ -53,6 +54,10 @@ export function createApp(): Hono<{ Bindings: Env; Variables: AppVariables }> {
   // Mount Telegram routes
   app.route('/telegram', telegramRouter);
   app.route('/api/telegram', telegramRouter);
+
+  // Mount Admin API routes
+  app.route('/admin', adminRouter);
+  app.route('/api/admin', adminRouter);
 
   return app;
 }

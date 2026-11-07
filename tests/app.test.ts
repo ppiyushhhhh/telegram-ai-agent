@@ -26,7 +26,8 @@ const mockEnv: Env = {
   TELEGRAM_WEBHOOK_SECRET: 'test_webhook_secret_key_123',
   OPENAI_API_KEY: 'sk-mock-key-for-tests',
   OPENAI_MODEL: 'gpt-4o-mini',
-  ALLOWED_TELEGRAM_USER_IDS: '111,222'
+  ALLOWED_TELEGRAM_USER_IDS: '111,222',
+  ADMIN_API_KEY: 'test_admin_secret_key_999'
 };
 
 describe('Telegram AI Agent - Core API Tests', () => {
@@ -91,5 +92,44 @@ describe('Telegram AI Agent - Core API Tests', () => {
     const body = await res.json<{ success: boolean; error: { code: string } }>();
     assert.equal(body.success, false);
     assert.equal(body.error.code, 'NOT_FOUND');
+  });
+
+  it('GET /api/admin/overview should reject requests without x-admin-key', async () => {
+    const res = await app.request('/api/admin/overview', { method: 'GET' }, mockEnv);
+    assert.equal(res.status, 401);
+    const body = await res.json<{ success: boolean; error: { code: string } }>();
+    assert.equal(body.success, false);
+    assert.equal(body.error.code, 'UNAUTHORIZED');
+  });
+
+  it('GET /api/admin/overview should return system stats with valid x-admin-key', async () => {
+    const res = await app.request(
+      '/api/admin/overview',
+      {
+        method: 'GET',
+        headers: { 'x-admin-key': 'test_admin_secret_key_999' }
+      },
+      mockEnv
+    );
+    assert.equal(res.status, 200);
+    const body = await res.json<{ success: boolean; data: { environment: string; model: string } }>();
+    assert.equal(body.success, true);
+    assert.equal(body.data.environment, 'uat');
+    assert.equal(body.data.model, 'gpt-4o-mini');
+  });
+
+  it('GET /api/admin/config should return non-sensitive parameters with valid x-admin-key', async () => {
+    const res = await app.request(
+      '/api/admin/config',
+      {
+        method: 'GET',
+        headers: { 'x-admin-key': 'test_admin_secret_key_999' }
+      },
+      mockEnv
+    );
+    assert.equal(res.status, 200);
+    const body = await res.json<{ success: boolean; data: { temperature: number; maxTokens: number } }>();
+    assert.equal(body.success, true);
+    assert.equal(typeof body.data.temperature, 'number');
   });
 });

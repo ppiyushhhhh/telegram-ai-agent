@@ -13,6 +13,8 @@
     "deploy:live": "wrangler deploy --env live",
     "typecheck": "tsc --noEmit",
     "test": "tsx --test tests/app.test.ts",
+    "dashboard:dev": "npm --prefix dashboard run dev",
+    "dashboard:build": "npm --prefix dashboard run build",
     "d1:migrations:apply:local": "wrangler d1 migrations apply DB --local",
     "d1:migrations:apply:uat": "wrangler d1 migrations apply DB --env uat --remote"
   },
