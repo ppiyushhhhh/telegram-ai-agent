@@ -1,0 +1,75 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "telegram-ai-agent",
+  "main": "src/index.ts",
+  "compatibility_date": "2024-11-01",
+  "compatibility_flags": [
+    "nodejs_compat"
+  ],
+  // Non-sensitive configuration variables for local development
+  "vars": {
+    "APP_ENV": "development",
+    "LOG_LEVEL": "debug",
+    "OPENAI_MODEL": "gpt-4o-mini",
+    "AI_TEMPERATURE": "0.7",
+    "MAX_TOKENS": "1000",
+    "RATE_LIMIT_PER_MINUTE": "20"
+  },
+  // Cloudflare D1 Database binding for default/local
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "telegram-ai-agent-d1-local",
+      "database_id": "00000000-0000-0000-0000-000000000000",
+      "migrations_dir": "migrations"
+    }
+  ],
+  "env": {
+    // ==========================================
+    // UAT Environment Configuration (Staging)
+    // ==========================================
+    "uat": {
+      "name": "telegram-ai-agent-uat",
+      "vars": {
+        "APP_ENV": "uat",
+        "LOG_LEVEL": "info",
+        "OPENAI_MODEL": "gpt-4o-mini",
+        "AI_TEMPERATURE": "0.7",
+        "MAX_TOKENS": "1000",
+        "RATE_LIMIT_PER_MINUTE": "30"
+      },
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "telegram-ai-agent-d1-uat",
+          // Set to your Cloudflare D1 UUID after running: wrangler d1 create telegram-ai-agent-d1-uat
+          "database_id": "TODO_REPLACE_WITH_UAT_D1_ID",
+          "migrations_dir": "migrations"
+        }
+      ]
+    },
+    // ==========================================
+    // LIVE Environment Configuration (Production)
+    // ==========================================
+    "live": {
+      "name": "telegram-ai-agent-live",
+      "vars": {
+        "APP_ENV": "production",
+        "LOG_LEVEL": "warn",
+        "OPENAI_MODEL": "gpt-4o",
+        "AI_TEMPERATURE": "0.7",
+        "MAX_TOKENS": "1500",
+        "RATE_LIMIT_PER_MINUTE": "60"
+      },
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "telegram-ai-agent-d1-live",
+          // Set to your Cloudflare D1 UUID after running: wrangler d1 create telegram-ai-agent-d1-live
+          "database_id": "TODO_REPLACE_WITH_LIVE_D1_ID",
+          "migrations_dir": "migrations"
+        }
+      ]
+    }
+  }
+}

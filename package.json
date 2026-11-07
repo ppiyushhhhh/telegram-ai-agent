@@ -1,0 +1,34 @@
+{
+  "name": "telegram-ai-agent",
+  "version": "0.1.0",
+  "description": "Private Telegram AI Agent backend running on Cloudflare Workers with Hono, OpenAI, and Cloudflare D1",
+  "private": true,
+  "type": "module",
+  "main": "src/index.ts",
+  "scripts": {
+    "dev": "wrangler dev",
+    "dev:uat": "wrangler dev --env uat",
+    "build": "wrangler deploy --dry-run --outdir dist",
+    "deploy:uat": "wrangler deploy --env uat",
+    "deploy:live": "wrangler deploy --env live",
+    "typecheck": "tsc --noEmit",
+    "test": "tsx --test tests/app.test.ts",
+    "d1:migrations:apply:local": "wrangler d1 migrations apply DB --local",
+    "d1:migrations:apply:uat": "wrangler d1 migrations apply DB --env uat --remote"
+  },
+  "dependencies": {
+    "hono": "^4.6.14",
+    "openai": "^4.73.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20241106.0",
+    "@types/node": "^22.9.0",
+    "tsx": "^4.23.15",
+    "typescript": "^5.6.3",
+    "wrangler": "^3.88.0"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}
