@@ -12,6 +12,7 @@
 #    npx wrangler secret put TELEGRAM_BOT_TOKEN --env uat
 #    npx wrangler secret put TELEGRAM_WEBHOOK_SECRET --env uat
 #    npx wrangler secret put OPENAI_API_KEY --env uat
+#    npx wrangler secret put GEMINI_API_KEY --env uat
 #    npx wrangler secret put ADMIN_API_KEY --env uat
 # ==============================================================================
 
@@ -28,16 +29,21 @@ TELEGRAM_BOT_TOKEN=123456789:ABCdefGhIJKlmNoPQRsTUVwxyZ_EXAMPLE
 # Generate a random 32+ character hex or alphanumeric string
 TELEGRAM_WEBHOOK_SECRET=replace_with_a_secure_random_token_min_16_chars
 
-# OpenAI API Key (sk-...)
-OPENAI_API_KEY=sk-proj-example1234567890abcdefghijklmnopqrstuvwxyz
+# AI Provider Selection: 'openai' (primary) | 'gemini' (secondary/fallback)
+PRIMARY_AI_PROVIDER=openai
 
-# OpenAI Model and parameters
+# OpenAI Configuration (Primary Provider)
+OPENAI_API_KEY=sk-proj-example1234567890abcdefghijklmnopqrstuvwxyz
 OPENAI_MODEL=gpt-4o-mini
 AI_TEMPERATURE=0.7
 MAX_TOKENS=1000
 
+# Gemini API Configuration (Secondary / Fallback Provider)
+GEMINI_API_KEY=AIzaSyExample1234567890abcdefghijklmnopqrstuvwxyz
+GEMINI_MODEL=gemini-1.5-flash
+
 # Private bot access control (comma-separated list of allowed Telegram user IDs)
-# Leave blank or set to '*' only in sandbox test environments
+# Only approved Telegram user IDs can access the bot
 ALLOWED_TELEGRAM_USER_IDS=123456789,987654321
 
 # Internal Admin API Key for protected endpoints (dashboard / management)

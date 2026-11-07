@@ -1,16 +1,30 @@
-name: Deploy to LIVE Production
+name: Deploy to LIVE Production (Requires Manual Approval)
 
 on:
+  # Manual dispatch trigger only - production deployments must be initiated manually
   workflow_dispatch:
-  release:
-    types: [published]
+    inputs:
+      confirmation:
+        description: 'Type "DEPLOY_LIVE" to confirm production deployment'
+        required: true
+        default: ''
 
 jobs:
   deploy-live:
     name: Deploy Worker to LIVE Production
     runs-on: ubuntu-latest
-    environment: production
+    # The 'production' environment in GitHub Actions enforces protection rules
+    # and required manual reviewers prior to deployment execution
+    environment:
+      name: production
+      url: https://telegram-ai-agent-live.workers.dev
     steps:
+      - name: Validate Confirmation
+        if: github.event.inputs.confirmation != 'DEPLOY_LIVE'
+        run: |
+          echo "Deployment aborted: Confirmation string 'DEPLOY_LIVE' was not provided."
+          exit 1
+
       - name: Checkout repository
         uses: actions/checkout@v4
 
@@ -25,6 +39,9 @@ jobs:
 
       - name: TypeScript Check
         run: npm run typecheck
+
+      - name: Run Test Suite
+        run: npm test
 
       - name: Deploy to Cloudflare Workers (LIVE)
         uses: cloudflare/wrangler-action@v3

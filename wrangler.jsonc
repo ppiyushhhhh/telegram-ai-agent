@@ -6,16 +6,18 @@
   "compatibility_flags": [
     "nodejs_compat"
   ],
-  // Non-sensitive configuration variables for local development
+  // Non-sensitive runtime variables for local development
   "vars": {
     "APP_ENV": "development",
     "LOG_LEVEL": "debug",
+    "PRIMARY_AI_PROVIDER": "openai",
     "OPENAI_MODEL": "gpt-4o-mini",
+    "GEMINI_MODEL": "gemini-1.5-flash",
     "AI_TEMPERATURE": "0.7",
     "MAX_TOKENS": "1000",
     "RATE_LIMIT_PER_MINUTE": "20"
   },
-  // Cloudflare D1 Database binding for default/local
+  // 1. Cloudflare D1 Database binding (Relational memory, users, chats, audit logs)
   "d1_databases": [
     {
       "binding": "DB",
@@ -24,16 +26,28 @@
       "migrations_dir": "migrations"
     }
   ],
+  // 2. Cloudflare R2 Bucket binding (Media attachments, voice notes, documents)
+  "r2_buckets": [
+    {
+      "binding": "MEDIA_BUCKET",
+      "bucket_name": "telegram-ai-agent-r2-local"
+    }
+  ],
+  // ===========================================================================
+  // Environment Configurations (UAT & LIVE)
+  // ===========================================================================
   "env": {
-    // ==========================================
-    // UAT Environment Configuration (Staging)
-    // ==========================================
+    // -------------------------------------------------------------------------
+    // UAT Environment (Staging & Integration Testing)
+    // -------------------------------------------------------------------------
     "uat": {
       "name": "telegram-ai-agent-uat",
       "vars": {
         "APP_ENV": "uat",
         "LOG_LEVEL": "info",
+        "PRIMARY_AI_PROVIDER": "openai",
         "OPENAI_MODEL": "gpt-4o-mini",
+        "GEMINI_MODEL": "gemini-1.5-flash",
         "AI_TEMPERATURE": "0.7",
         "MAX_TOKENS": "1000",
         "RATE_LIMIT_PER_MINUTE": "30"
@@ -46,17 +60,25 @@
           "database_id": "TODO_REPLACE_WITH_UAT_D1_ID",
           "migrations_dir": "migrations"
         }
+      ],
+      "r2_buckets": [
+        {
+          "binding": "MEDIA_BUCKET",
+          "bucket_name": "telegram-ai-agent-r2-uat"
+        }
       ]
     },
-    // ==========================================
-    // LIVE Environment Configuration (Production)
-    // ==========================================
+    // -------------------------------------------------------------------------
+    // LIVE Environment (Production)
+    // -------------------------------------------------------------------------
     "live": {
       "name": "telegram-ai-agent-live",
       "vars": {
         "APP_ENV": "production",
         "LOG_LEVEL": "warn",
+        "PRIMARY_AI_PROVIDER": "openai",
         "OPENAI_MODEL": "gpt-4o",
+        "GEMINI_MODEL": "gemini-1.5-pro",
         "AI_TEMPERATURE": "0.7",
         "MAX_TOKENS": "1500",
         "RATE_LIMIT_PER_MINUTE": "60"
@@ -68,6 +90,12 @@
           // Set to your Cloudflare D1 UUID after running: wrangler d1 create telegram-ai-agent-d1-live
           "database_id": "TODO_REPLACE_WITH_LIVE_D1_ID",
           "migrations_dir": "migrations"
+        }
+      ],
+      "r2_buckets": [
+        {
+          "binding": "MEDIA_BUCKET",
+          "bucket_name": "telegram-ai-agent-r2-live"
         }
       ]
     }

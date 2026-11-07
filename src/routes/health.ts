@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import type { Env, AppVariables, ApiResponse, HealthCheckData } from '../types';
-import { APP_VERSION } from '../config/constants';
+import { APP_VERSION, DEFAULT_OPENAI_MODEL, DEFAULT_GEMINI_MODEL } from '../config/constants';
 
 export const healthRouter = new Hono<{ Bindings: Env; Variables: AppVariables }>();
 
@@ -36,15 +36,24 @@ healthRouter.get('/', async (c) => {
     telegramStatus = 'missing_secret';
   }
 
-  // 3. Check OpenAI config readiness
+  // 3. Check AI Providers (OpenAI Primary, Gemini Secondary)
+  const primaryProvider = (c.env.PRIMARY_AI_PROVIDER || 'openai') as 'openai' | 'gemini';
   const openaiStatus: 'configured' | 'missing_key' = c.env.OPENAI_API_KEY
     ? 'configured'
     : 'missing_key';
-  const openaiModel = c.env.OPENAI_MODEL || 'gpt-4o-mini';
+  const geminiStatus: 'configured' | 'not_configured' = c.env.GEMINI_API_KEY
+    ? 'configured'
+    : 'not_configured';
+
+  // 4. Check Cloudflare Storage & Pipeline Bindings
+  const r2Status: 'bound' | 'not_bound' = c.env.MEDIA_BUCKET ? 'bound' : 'not_bound';
+  const vectorizeStatus: 'bound' | 'not_bound' = c.env.VECTOR_INDEX ? 'bound' : 'not_bound';
+  const queueStatus: 'bound' | 'not_bound' = c.env.TASK_QUEUE ? 'bound' : 'not_bound';
 
   // Determine overall status
-  const isHealthy = dbStatus === 'ok' && telegramStatus === 'configured' && openaiStatus === 'configured';
-  const isDegraded = dbStatus === 'ok' || openaiStatus === 'configured';
+  const primaryAiReady = primaryProvider === 'openai' ? openaiStatus === 'configured' : geminiStatus === 'configured';
+  const isHealthy = dbStatus === 'ok' && telegramStatus === 'configured' && primaryAiReady;
+  const isDegraded = dbStatus === 'ok' || openaiStatus === 'configured' || geminiStatus === 'configured';
   const overallStatus: 'healthy' | 'degraded' | 'unhealthy' = isHealthy
     ? 'healthy'
     : isDegraded
@@ -66,9 +75,21 @@ healthRouter.get('/', async (c) => {
       telegram: {
         status: telegramStatus
       },
-      openai: {
-        status: openaiStatus,
-        model: openaiModel
+      aiProviders: {
+        primary: primaryProvider,
+        openai: {
+          status: openaiStatus,
+          model: c.env.OPENAI_MODEL || DEFAULT_OPENAI_MODEL
+        },
+        gemini: {
+          status: geminiStatus,
+          model: c.env.GEMINI_MODEL || DEFAULT_GEMINI_MODEL
+        }
+      },
+      storage: {
+        r2: r2Status,
+        vectorize: vectorizeStatus,
+        queues: queueStatus
       }
     }
   };

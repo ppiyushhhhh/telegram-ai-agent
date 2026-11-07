@@ -3,6 +3,7 @@ import type { Env, AppVariables, ApiResponse } from '../types';
 import type { TelegramUpdate } from '../services/telegram/types';
 import { telegramWebhookAuthMiddleware } from '../middleware/telegram-auth';
 import { TelegramClient } from '../services/telegram/client';
+import { sendSafeTelegramMessage } from '../services/telegram/utils';
 import { OpenAIService } from '../services/openai/client';
 import { DatabaseService } from '../services/db/client';
 import { getAllowedUserIds } from '../config/env';
@@ -72,22 +73,61 @@ telegramRouter.post('/webhook', async (c) => {
 
   // Handle standard slash commands
   if (text === '/start') {
-    await telegramClient.sendMessage({
-      chat_id: chatId,
-      text: `👋 Hello ${sender?.first_name || 'there'}! I am your private AI Assistant powered by Cloudflare Workers and OpenAI.\n\nType any question or prompt to get started!`,
-      reply_to_message_id: message.message_id
-    });
+    await sendSafeTelegramMessage(
+      telegramClient,
+      chatId,
+      `👋 *Hello ${sender?.first_name || 'there'}!*\n\nI am your private AI Assistant powered by Cloudflare Workers and OpenAI.\n\n*Available Commands:*\n• /help - Show available commands\n• /reset - Clear active conversation context\n• /model - Show active model info\n• /stats - View your usage statistics\n\nSimply send any message to start chatting!`,
+      message.message_id
+    );
     return c.json({ success: true, message: 'Handled /start' }, 200);
   }
 
   if (text === '/help') {
-    await telegramClient.sendMessage({
-      chat_id: chatId,
-      text: '🤖 *Commands:*\n/start - Initialize or reset conversation\n/help - View this help message\n\nSimply send any message to chat with the AI model.',
-      parse_mode: 'Markdown',
-      reply_to_message_id: message.message_id
-    });
+    await sendSafeTelegramMessage(
+      telegramClient,
+      chatId,
+      '🤖 *Private Telegram AI Assistant Commands:*\n\n• `/start` - Welcome message & capabilities\n• `/help` - View this help guide\n• `/reset` - Clear current context and start fresh\n• `/model` - Inspect active model parameters\n• `/stats` - View your interaction count\n\n*Tips:*\nYou can ask coding questions, drafting help, or conversational prompts directly.',
+      message.message_id
+    );
     return c.json({ success: true, message: 'Handled /help' }, 200);
+  }
+
+  if (text === '/reset') {
+    if (dbService) {
+      await dbService.resetConversation(chatId);
+    }
+    await sendSafeTelegramMessage(
+      telegramClient,
+      chatId,
+      '🔄 *Conversation context has been cleared.*\nWhat would you like to talk about next?',
+      message.message_id
+    );
+    return c.json({ success: true, message: 'Handled /reset' }, 200);
+  }
+
+  if (text === '/model') {
+    const activeModel = c.env.OPENAI_MODEL || 'gpt-4o-mini';
+    const temp = c.env.AI_TEMPERATURE || '0.7';
+    const maxTokens = c.env.MAX_TOKENS || '1000';
+    await sendSafeTelegramMessage(
+      telegramClient,
+      chatId,
+      `🧠 *Model Configuration:*\n\n• *Model:* \`${activeModel}\`\n• *Temperature:* \`${temp}\`\n• *Max Tokens:* \`${maxTokens}\`\n• *Environment:* \`${c.env.APP_ENV || 'development'}\``,
+      message.message_id
+    );
+    return c.json({ success: true, message: 'Handled /model' }, 200);
+  }
+
+  if (text === '/stats') {
+    let statsMsg = '📊 *Your Activity Stats:*\n';
+    if (dbService && sender) {
+      const stats = await dbService.getUserStats(sender.id);
+      statsMsg += `\n• *Messages Exchanged:* ${stats.messageCount}\n• *Conversations Created:* ${stats.conversationCount}`;
+    } else {
+      statsMsg += '\nDatabase stats unavailable in stateless mode.';
+    }
+    await sendSafeTelegramMessage(telegramClient, chatId, statsMsg, message.message_id);
+    return c.json({ success: true, message: 'Handled /stats' }, 200);
   }
 
   // Send typing indicator while processing AI query

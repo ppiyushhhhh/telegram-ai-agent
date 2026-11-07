@@ -1,7 +1,9 @@
 import { z } from 'zod';
 import type { Env } from '../types';
 import {
+  DEFAULT_PRIMARY_PROVIDER,
   DEFAULT_OPENAI_MODEL,
+  DEFAULT_GEMINI_MODEL,
   DEFAULT_AI_TEMPERATURE,
   DEFAULT_MAX_TOKENS,
   DEFAULT_RATE_LIMIT
@@ -13,8 +15,11 @@ const envSchema = z.object({
   TELEGRAM_BOT_TOKEN: z.string().min(1, 'TELEGRAM_BOT_TOKEN is required'),
   TELEGRAM_WEBHOOK_SECRET: z.string().min(1, 'TELEGRAM_WEBHOOK_SECRET is required'),
   ALLOWED_TELEGRAM_USER_IDS: z.string().optional().default(''),
+  PRIMARY_AI_PROVIDER: z.enum(['openai', 'gemini']).default(DEFAULT_PRIMARY_PROVIDER as 'openai' | 'gemini'),
   OPENAI_API_KEY: z.string().min(1, 'OPENAI_API_KEY is required'),
   OPENAI_MODEL: z.string().default(DEFAULT_OPENAI_MODEL),
+  GEMINI_API_KEY: z.string().optional(),
+  GEMINI_MODEL: z.string().default(DEFAULT_GEMINI_MODEL),
   AI_TEMPERATURE: z.coerce.number().min(0).max(2).default(DEFAULT_AI_TEMPERATURE),
   MAX_TOKENS: z.coerce.number().min(1).default(DEFAULT_MAX_TOKENS),
   RATE_LIMIT_PER_MINUTE: z.coerce.number().min(1).default(DEFAULT_RATE_LIMIT),
@@ -36,7 +41,7 @@ export function getValidatedConfig(env: Partial<Env>): ValidatedEnv {
 
 /**
  * Returns allowed Telegram user IDs as an array of numbers.
- * If empty or contains '*', access is unconstrained (or handled separately).
+ * If empty or contains '*', access is unconstrained.
  */
 export function getAllowedUserIds(allowedString?: string): number[] {
   if (!allowedString || allowedString.trim() === '' || allowedString.trim() === '*') {

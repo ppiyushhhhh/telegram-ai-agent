@@ -21,7 +21,16 @@ export interface HealthStatus {
   checks: {
     database: { status: 'ok' | 'failed' | 'not_configured'; latencyMs?: number; message?: string };
     telegram: { status: 'configured' | 'missing_token' | 'missing_secret' };
-    openai: { status: 'configured' | 'missing_key'; model: string };
+    aiProviders: {
+      primary: 'openai' | 'gemini';
+      openai: { status: 'configured' | 'missing_key'; model: string };
+      gemini: { status: 'configured' | 'not_configured'; model: string };
+    };
+    storage: {
+      r2: 'bound' | 'not_bound';
+      vectorize: 'bound' | 'not_bound';
+      queues: 'bound' | 'not_bound';
+    };
   };
 }
 

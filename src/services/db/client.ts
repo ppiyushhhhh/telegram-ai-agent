@@ -68,6 +68,48 @@ export class DatabaseService {
     return conv;
   }
 
+  public async resetConversation(chatId: number): Promise<boolean> {
+    const conv = await this.db
+      .prepare('SELECT id FROM conversations WHERE telegram_chat_id = ?')
+      .bind(chatId)
+      .first<{ id: string }>();
+
+    if (conv) {
+      await this.db
+        .prepare('DELETE FROM messages WHERE conversation_id = ?')
+        .bind(conv.id)
+        .run();
+      await this.db
+        .prepare('UPDATE conversations SET updated_at = datetime(\'now\') WHERE id = ?')
+        .bind(conv.id)
+        .run();
+      return true;
+    }
+    return false;
+  }
+
+  public async getUserStats(userId: number): Promise<{ messageCount: number; conversationCount: number }> {
+    const [msgCount, convCount] = await Promise.all([
+      this.db
+        .prepare(
+          `SELECT count(*) as count FROM messages m
+           JOIN conversations c ON m.conversation_id = c.id
+           WHERE c.user_id = ?`
+        )
+        .bind(userId)
+        .first<{ count: number }>(),
+      this.db
+        .prepare('SELECT count(*) as count FROM conversations WHERE user_id = ?')
+        .bind(userId)
+        .first<{ count: number }>()
+    ]);
+
+    return {
+      messageCount: msgCount?.count || 0,
+      conversationCount: convCount?.count || 0
+    };
+  }
+
   public async getRecentMessages(conversationId: string, limit = 10): Promise<DbMessage[]> {
     const results = await this.db
       .prepare(

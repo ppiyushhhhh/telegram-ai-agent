@@ -73,26 +73,30 @@ export const HealthMonitor: React.FC<HealthMonitorProps> = ({ health, overview }
           </div>
         </div>
 
-        {/* OpenAI Engine */}
+        {/* AI Providers (OpenAI & Gemini) */}
         <div className="card">
           <div className="card-title">
-            <span>OpenAI Service</span>
+            <span>AI Engine ({health?.checks.aiProviders.primary === 'gemini' ? 'Gemini' : 'OpenAI'})</span>
             <Cpu size={18} color="var(--accent-purple)" />
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '6px' }}>
             <span
               className={`badge ${
-                health?.checks.openai.status === 'configured' ? 'badge-green' : 'badge-red'
+                health?.checks.aiProviders.openai.status === 'configured' ? 'badge-green' : 'badge-red'
               }`}
             >
-              {health?.checks.openai.status === 'configured' ? 'READY' : 'NO KEY'}
+              OpenAI: {health?.checks.aiProviders.openai.status === 'configured' ? 'READY' : 'NO KEY'}
             </span>
-            <span style={{ fontSize: '0.8125rem', color: 'var(--text-secondary)' }}>
-              {health?.checks.openai.model || 'gpt-4o-mini'}
+            <span
+              className={`badge ${
+                health?.checks.aiProviders.gemini.status === 'configured' ? 'badge-blue' : 'badge-amber'
+              }`}
+            >
+              Gemini: {health?.checks.aiProviders.gemini.status === 'configured' ? 'READY' : 'OFF'}
             </span>
           </div>
           <div className="card-subtitle">
-            Edge-ready with nodejs_compat &amp; retry handlers
+            Primary: {health?.checks.aiProviders.openai.model || 'gpt-4o-mini'} &bull; Secondary: {health?.checks.aiProviders.gemini.model || 'gemini-1.5-flash'}
           </div>
         </div>
 

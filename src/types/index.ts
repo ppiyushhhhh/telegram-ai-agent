@@ -3,8 +3,20 @@
  */
 
 export interface Env {
-  // Cloudflare D1 Database binding
+  // Cloudflare D1 Database binding (Relational long-term memory & metadata)
   DB: D1Database;
+
+  // Cloudflare R2 Bucket (Voice notes, media, documents, exports)
+  MEDIA_BUCKET?: R2Bucket;
+
+  // Cloudflare Vectorize (Vector embeddings for semantic memory search)
+  VECTOR_INDEX?: VectorizeIndex;
+
+  // Cloudflare Queues (Background asynchronous tasks like embedding generation)
+  TASK_QUEUE?: Queue;
+
+  // Cloudflare Durable Objects (Stateful short-term memory & per-user locks)
+  SESSION_DO?: DurableObjectNamespace;
 
   // Environment mode: 'development' | 'uat' | 'production'
   APP_ENV: string;
@@ -17,11 +29,18 @@ export interface Env {
   TELEGRAM_WEBHOOK_SECRET: string;
   ALLOWED_TELEGRAM_USER_IDS?: string;
 
-  // OpenAI Configuration
+  // AI Provider Selection: 'openai' (primary) | 'gemini' (secondary/fallback)
+  PRIMARY_AI_PROVIDER?: 'openai' | 'gemini';
+
+  // OpenAI Configuration (Primary Provider)
   OPENAI_API_KEY: string;
   OPENAI_MODEL?: string;
   AI_TEMPERATURE?: string;
   MAX_TOKENS?: string;
+
+  // Gemini Configuration (Secondary / Fallback Provider)
+  GEMINI_API_KEY?: string;
+  GEMINI_MODEL?: string;
 
   // Admin and Internal API
   ADMIN_API_KEY?: string;
@@ -64,9 +83,21 @@ export interface HealthCheckData {
     telegram: {
       status: 'configured' | 'missing_token' | 'missing_secret';
     };
-    openai: {
-      status: 'configured' | 'missing_key';
-      model: string;
+    aiProviders: {
+      primary: 'openai' | 'gemini';
+      openai: {
+        status: 'configured' | 'missing_key';
+        model: string;
+      };
+      gemini: {
+        status: 'configured' | 'not_configured';
+        model: string;
+      };
+    };
+    storage: {
+      r2: 'bound' | 'not_bound';
+      vectorize: 'bound' | 'not_bound';
+      queues: 'bound' | 'not_bound';
     };
   };
 }

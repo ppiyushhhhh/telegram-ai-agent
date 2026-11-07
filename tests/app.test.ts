@@ -55,7 +55,16 @@ describe('Telegram AI Agent - Core API Tests', () => {
         checks: {
           database: { status: string };
           telegram: { status: string };
-          openai: { status: string };
+          aiProviders: {
+            primary: string;
+            openai: { status: string };
+            gemini: { status: string };
+          };
+          storage: {
+            r2: string;
+            vectorize: string;
+            queues: string;
+          };
         };
       };
     }>();
@@ -65,7 +74,8 @@ describe('Telegram AI Agent - Core API Tests', () => {
     assert.equal(body.data.environment, 'uat');
     assert.equal(body.data.checks.database.status, 'ok');
     assert.equal(body.data.checks.telegram.status, 'configured');
-    assert.equal(body.data.checks.openai.status, 'configured');
+    assert.equal(body.data.checks.aiProviders.openai.status, 'configured');
+    assert.equal(body.data.checks.aiProviders.primary, 'openai');
   });
 
   it('POST /telegram/webhook should reject requests missing secret header', async () => {
