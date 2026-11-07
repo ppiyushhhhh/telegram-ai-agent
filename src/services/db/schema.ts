@@ -36,3 +36,30 @@ export interface DbAuditLog {
   payload?: string | null;
   created_at: string;
 }
+
+export interface DbProcessedUpdate {
+  update_id: number;
+  chat_id?: number | null;
+  user_id?: number | null;
+  processed_at: string;
+}
+
+export interface DbAiUsage {
+  id: string;
+  user_id: number;
+  conversation_id?: string | null;
+  provider: string;
+  model: string;
+  prompt_tokens: number;
+  completion_tokens: number;
+  total_tokens: number;
+  estimated_cost_usd: number;
+  created_at: string;
+}
+
+export interface DbSystemSetting {
+  key: string;
+  value: string;
+  description?: string | null;
+  updated_at: string;
+}

@@ -49,3 +49,4 @@ export class R2StorageService {
     return this.bucket.list({ prefix, limit });
   }
 }
+

@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import type { Env, AppVariables, ApiResponse } from '../types';
+import type { Env, AppVariables } from '../types';
 import type { TelegramUpdate } from '../services/telegram/types';
 import { telegramWebhookAuthMiddleware } from '../middleware/telegram-auth';
 import { TelegramClient } from '../services/telegram/client';
@@ -7,43 +7,90 @@ import { sendSafeTelegramMessage } from '../services/telegram/utils';
 import { UnifiedAIService } from '../services/ai/unified';
 import { SemanticMemoryService } from '../services/memory/semantic';
 import { DatabaseService } from '../services/db/client';
+import { estimateUsageCost } from '../services/ai/cost';
 import { getAllowedUserIds } from '../config/env';
 
 export const telegramRouter = new Hono<{ Bindings: Env; Variables: AppVariables }>();
 
-// Apply secret token verification middleware to webhook endpoint
-telegramRouter.use('/webhook', telegramWebhookAuthMiddleware);
+// Apply secret token verification middleware to all incoming webhook paths
+telegramRouter.use('*', telegramWebhookAuthMiddleware);
 
-telegramRouter.post('/webhook', async (c) => {
-  const requestId = c.get('requestId') || crypto.randomUUID();
+const handleTelegramUpdate = async (c: any) => {
   let update: TelegramUpdate;
 
+  const runBackgroundTask = (promise: Promise<unknown>) => {
+    try {
+      if (c.executionCtx && typeof c.executionCtx.waitUntil === 'function') {
+        c.executionCtx.waitUntil(promise);
+        return;
+      }
+    } catch {
+      // In test or non-Worker environments, executionCtx getter throws
+    }
+    promise.catch((err: unknown) => console.error('Background task error:', err));
+  };
+
   try {
-    update = await c.req.json<TelegramUpdate>();
+    update = (await c.req.json()) as TelegramUpdate;
   } catch {
     return c.json({ success: false, error: 'Invalid JSON payload' }, 400);
   }
 
-  // We primarily handle user messages
+  if (!update || typeof update.update_id !== 'number') {
+    return c.json({ success: false, error: 'Missing update_id' }, 400);
+  }
+
+  const dbService = c.env.DB ? new DatabaseService(c.env.DB) : null;
+  const telegramClient = new TelegramClient(c.env.TELEGRAM_BOT_TOKEN);
+
+  // 1. Duplicate Update Prevention (Idempotency check via update_id)
+  if (dbService) {
+    const isProcessed = await dbService.isUpdateProcessed(update.update_id);
+    if (isProcessed) {
+      console.log(`Duplicate Telegram update_id ${update.update_id} ignored.`);
+      return c.json({ success: true, message: 'Duplicate update ignored' }, 200);
+    }
+    // Mark update as processed in D1
+    await dbService.markUpdateProcessed(
+      update.update_id,
+      update.message?.chat?.id,
+      update.message?.from?.id
+    );
+  }
+
+  // We primarily handle message updates
   const message = update.message;
   if (!message || !message.text) {
-    // Return 200 to acknowledge other Telegram events (e.g. status changes)
-    return c.json({ success: true, message: 'Ignored non-text or empty update' }, 200);
+    // Acknowledge non-text updates (e.g. status changes, edited messages) with 200 OK
+    return c.json({ success: true, message: 'Non-text update ignored' }, 200);
   }
 
   const sender = message.from;
-  const chatId = message.chat.id;
+  const chat = message.chat;
+  const chatId = chat.id;
   const text = message.text.trim();
 
-  const telegramClient = new TelegramClient(c.env.TELEGRAM_BOT_TOKEN);
-  const dbService = c.env.DB ? new DatabaseService(c.env.DB) : null;
+  // 2. Private Chat Enforcement
+  if (chat.type !== 'private') {
+    await sendSafeTelegramMessage(
+      telegramClient,
+      chatId,
+      '🔒 *Direct Chat Only*\nThis private AI agent is configured strictly for direct 1-on-1 private chats. Please message me directly.',
+      message.message_id
+    );
+    return c.json({ success: true, message: 'Non-private chat notification sent' }, 200);
+  }
 
-  // Access control check for private agent
+  // 3. User Authorization (Numeric Telegram user ID allowlist)
+  if (!sender) {
+    return c.json({ success: false, error: 'Missing sender information' }, 400);
+  }
+
   const allowedUserIds = getAllowedUserIds(c.env.ALLOWED_TELEGRAM_USER_IDS);
   const isAllowed =
-    allowedUserIds.length === 0 || (sender && allowedUserIds.includes(sender.id));
+    allowedUserIds.length === 0 || allowedUserIds.includes(sender.id);
 
-  if (sender && dbService) {
+  if (dbService) {
     try {
       await dbService.upsertUser({
         id: sender.id,
@@ -59,82 +106,117 @@ telegramRouter.post('/webhook', async (c) => {
 
   if (!isAllowed) {
     if (dbService) {
-      await dbService.logEvent('UNAUTHORIZED_ACCESS_ATTEMPT', sender?.id, chatId, {
-        username: sender?.username,
+      await dbService.logEvent('UNAUTHORIZED_ACCESS_ATTEMPT', sender.id, chatId, {
+        username: sender.username,
         text
       });
     }
-    await telegramClient.sendMessage({
-      chat_id: chatId,
-      text: '⛔ Access denied. This is a private AI agent. You are not authorized to use this service.',
-      reply_to_message_id: message.message_id
-    });
-    return c.json({ success: true, message: 'Unauthorized sender notified' }, 200);
-  }
-
-  // Handle standard slash commands
-  if (text === '/start') {
     await sendSafeTelegramMessage(
       telegramClient,
       chatId,
-      `👋 *Hello ${sender?.first_name || 'there'}!*\n\nI am your private AI Assistant powered by Cloudflare Workers and OpenAI.\n\n*Available Commands:*\n• /help - Show available commands\n• /reset - Clear active conversation context\n• /model - Show active model info\n• /stats - View your usage statistics\n\nSimply send any message to start chatting!`,
+      '⛔ *Access Denied*\nThis is a private AI agent. Your Telegram user ID is not authorized to access this service.',
       message.message_id
     );
+    return c.json({ success: true, message: 'Unauthorized user notified' }, 200);
+  }
+
+  // 4. Command Handling
+  // /start command
+  if (text === '/start') {
+    const welcomeText =
+      `👋 *Hello ${sender.first_name || 'there'}!*\n\n` +
+      `I am your private AI Agent running on Cloudflare Workers and powered by OpenAI.\n\n` +
+      `*Commands:*\n` +
+      `• \`/help\` - View commands and help guide\n` +
+      `• \`/status\` - View system status, active model & usage\n` +
+      `• \`/new\` - Start a brand new conversation session\n` +
+      `• \`/clear\` - Clear current conversation context\n\n` +
+      `Send any message to begin!`;
+
+    await sendSafeTelegramMessage(telegramClient, chatId, welcomeText, message.message_id);
     return c.json({ success: true, message: 'Handled /start' }, 200);
   }
 
+  // /help command
   if (text === '/help') {
-    await sendSafeTelegramMessage(
-      telegramClient,
-      chatId,
-      '🤖 *Private Telegram AI Assistant Commands:*\n\n• `/start` - Welcome message & capabilities\n• `/help` - View this help guide\n• `/reset` - Clear current context and start fresh\n• `/model` - Inspect active model parameters\n• `/stats` - View your interaction count\n\n*Tips:*\nYou can ask coding questions, drafting help, or conversational prompts directly.',
-      message.message_id
-    );
+    const helpText =
+      `🤖 *Telegram AI Agent Guide*\n\n` +
+      `• \`/start\` - Welcome screen and agent introduction\n` +
+      `• \`/help\` - View this command guide\n` +
+      `• \`/status\` - View active AI model, latency & token stats\n` +
+      `• \`/new\` - Start a fresh conversation topic\n` +
+      `• \`/clear\` - Clear context for current chat session\n\n` +
+      `*Tips:*\n` +
+      `• You can ask complex programming questions, drafting, or analysis prompts.\n` +
+      `• Conversation context is maintained automatically.\n` +
+      `• Long responses are cleanly split to comply with Telegram message limits.`;
+
+    await sendSafeTelegramMessage(telegramClient, chatId, helpText, message.message_id);
     return c.json({ success: true, message: 'Handled /help' }, 200);
   }
 
-  if (text === '/reset') {
+  // /status command (and /stats, /model aliases)
+  if (text === '/status' || text === '/stats' || text === '/model') {
+    const activeModel = c.env.OPENAI_MODEL || 'gpt-4o-mini';
+    const primaryProvider = c.env.PRIMARY_AI_PROVIDER || 'openai';
+    const envName = (c.env.APP_ENV || 'development').toUpperCase();
+
+    let usageInfo = '• *Lifetime Messages:* 0\n• *Estimated Cost:* $0.00';
+    if (dbService) {
+      const stats = await dbService.getUserStats(sender.id);
+      const usage = await dbService.getUserUsageStats(sender.id);
+      usageInfo =
+        `• *Total Messages:* ${stats.messageCount}\n` +
+        `• *Conversations:* ${stats.conversationCount}\n` +
+        `• *Tokens Used:* ${usage.totalTokens.toLocaleString()}\n` +
+        `• *Estimated API Cost:* $${usage.totalCostUsd.toFixed(5)}`;
+    }
+
+    const statusText =
+      `⚡ *System Status & Telemetry*\n\n` +
+      `• *Environment:* \`${envName}\`\n` +
+      `• *Primary AI Provider:* \`${primaryProvider.toUpperCase()}\`\n` +
+      `• *Active Model:* \`${activeModel}\`\n` +
+      `• *D1 Database:* \`ONLINE\`\n\n` +
+      `📊 *Your Account Usage:*\n${usageInfo}`;
+
+    await sendSafeTelegramMessage(telegramClient, chatId, statusText, message.message_id);
+    return c.json({ success: true, message: 'Handled /status' }, 200);
+  }
+
+  // /new command (Starts a brand new conversation session)
+  if (text === '/new') {
+    const activeModel = c.env.OPENAI_MODEL || 'gpt-4o-mini';
+    if (dbService) {
+      await dbService.createNewConversation(chatId, sender.id, activeModel);
+    }
+    await sendSafeTelegramMessage(
+      telegramClient,
+      chatId,
+      '🆕 *Started a new conversation session.*\nWhat would you like to explore next?',
+      message.message_id
+    );
+    return c.json({ success: true, message: 'Handled /new' }, 200);
+  }
+
+  // /clear command (and /reset alias)
+  if (text === '/clear' || text === '/reset') {
     if (dbService) {
       await dbService.resetConversation(chatId);
     }
     await sendSafeTelegramMessage(
       telegramClient,
       chatId,
-      '🔄 *Conversation context has been cleared.*\nWhat would you like to talk about next?',
+      '🧹 *Conversation context cleared.*\nPrevious context has been reset for this session.',
       message.message_id
     );
-    return c.json({ success: true, message: 'Handled /reset' }, 200);
+    return c.json({ success: true, message: 'Handled /clear' }, 200);
   }
 
-  if (text === '/model') {
-    const activeModel = c.env.OPENAI_MODEL || 'gpt-4o-mini';
-    const temp = c.env.AI_TEMPERATURE || '0.7';
-    const maxTokens = c.env.MAX_TOKENS || '1000';
-    await sendSafeTelegramMessage(
-      telegramClient,
-      chatId,
-      `🧠 *Model Configuration:*\n\n• *Model:* \`${activeModel}\`\n• *Temperature:* \`${temp}\`\n• *Max Tokens:* \`${maxTokens}\`\n• *Environment:* \`${c.env.APP_ENV || 'development'}\``,
-      message.message_id
-    );
-    return c.json({ success: true, message: 'Handled /model' }, 200);
-  }
+  // 5. Send typing indicator while processing AI query
+  runBackgroundTask(telegramClient.sendChatAction(chatId, 'typing'));
 
-  if (text === '/stats') {
-    let statsMsg = '📊 *Your Activity Stats:*\n';
-    if (dbService && sender) {
-      const stats = await dbService.getUserStats(sender.id);
-      statsMsg += `\n• *Messages Exchanged:* ${stats.messageCount}\n• *Conversations Created:* ${stats.conversationCount}`;
-    } else {
-      statsMsg += '\nDatabase stats unavailable in stateless mode.';
-    }
-    await sendSafeTelegramMessage(telegramClient, chatId, statsMsg, message.message_id);
-    return c.json({ success: true, message: 'Handled /stats' }, 200);
-  }
-
-  // Send typing indicator while processing AI query
-  c.executionCtx.waitUntil(telegramClient.sendChatAction(chatId, 'typing').catch(() => {}));
-
-  // Process message through Unified AI Service (OpenAI with automatic Gemini fallback)
+  // 6. Text Message Handling & OpenAI Execution
   try {
     const aiService = new UnifiedAIService(c.env);
     const memoryService = new SemanticMemoryService(c.env, aiService);
@@ -144,18 +226,16 @@ telegramRouter.post('/webhook', async (c) => {
     let systemInstruction =
       'You are a helpful, concise, and highly capable private AI assistant communicating via Telegram. Keep responses formatted cleanly with markdown.';
 
-    // 1. Retrieve Semantic Long-Term Memories (from Cloudflare Vectorize)
-    if (sender) {
-      try {
-        const memories = await memoryService.queryRelevantMemories(sender.id, text, 3);
-        if (memories.length > 0) {
-          systemInstruction +=
-            '\n\nRelevant context recalled from your long-term memory about this user:\n' +
-            memories.map((m) => `• ${m.content}`).join('\n');
-        }
-      } catch (memErr) {
-        console.warn('Semantic memory query skipped:', memErr);
+    // Retrieve Semantic Long-Term Memories (from Cloudflare Vectorize)
+    try {
+      const memories = await memoryService.queryRelevantMemories(sender.id, text, 3);
+      if (memories.length > 0) {
+        systemInstruction +=
+          '\n\nRelevant context recalled from your long-term memory about this user:\n' +
+          memories.map((m) => `• ${m.content}`).join('\n');
       }
+    } catch (memErr) {
+      console.warn('Semantic memory query skipped:', memErr);
     }
 
     const chatHistory: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [
@@ -165,8 +245,8 @@ telegramRouter.post('/webhook', async (c) => {
       }
     ];
 
-    // 2. Retrieve Short-Term Relational Conversation History (from Cloudflare D1)
-    if (dbService && sender) {
+    // Retrieve Short-Term Relational Conversation History (from Cloudflare D1)
+    if (dbService) {
       try {
         const conv = await dbService.getOrCreateConversation(chatId, sender.id, activeModel);
         conversationId = conv.id;
@@ -182,19 +262,25 @@ telegramRouter.post('/webhook', async (c) => {
     // Add current user message
     chatHistory.push({ role: 'user', content: text });
 
-    // 3. Generate AI response (OpenAI primary with Gemini fallback)
+    // Generate AI response
     const aiResult = await aiService.generateChatResponse(chatHistory, {
       model: activeModel,
       temperature: c.env.AI_TEMPERATURE ? parseFloat(c.env.AI_TEMPERATURE) : 0.7,
       maxTokens: c.env.MAX_TOKENS ? parseInt(c.env.MAX_TOKENS, 10) : 1000
     });
 
-    // 4. Send reply back to Telegram safely (handles chunking if > 4096 chars and markdown fallback)
+    // Send reply back to Telegram safely
     await sendSafeTelegramMessage(telegramClient, chatId, aiResult.text, message.message_id);
 
-    // 5. Asynchronously persist message history to D1 and index semantic memory
-    if (dbService && sender) {
-      c.executionCtx.waitUntil(
+    // Track token usage and estimated cost
+    const promptTokens = aiResult.usage?.promptTokens || 0;
+    const completionTokens = aiResult.usage?.completionTokens || 0;
+    const totalTokens = aiResult.usage?.totalTokens || promptTokens + completionTokens;
+    const estimatedCost = estimateUsageCost(aiResult.model, promptTokens, completionTokens);
+
+    // Persist messages and record AI usage in D1 in the background
+    if (dbService) {
+      runBackgroundTask(
         (async () => {
           try {
             await dbService.saveMessage({
@@ -207,7 +293,17 @@ telegramRouter.post('/webhook', async (c) => {
               conversationId,
               role: 'assistant',
               content: aiResult.text,
-              tokensUsed: aiResult.usage?.totalTokens
+              tokensUsed: totalTokens
+            });
+            await dbService.recordAiUsage({
+              userId: sender.id,
+              conversationId,
+              provider: aiResult.provider,
+              model: aiResult.model,
+              promptTokens,
+              completionTokens,
+              totalTokens,
+              estimatedCostUsd: estimatedCost
             });
 
             // Index meaningful exchanges into Vectorize for future semantic recall
@@ -218,13 +314,21 @@ telegramRouter.post('/webhook', async (c) => {
               );
             }
           } catch (e) {
-            console.error('Failed to save messages to D1 or Vectorize:', e);
+            console.error('Failed to save message or record usage in D1:', e);
           }
         })()
       );
     }
 
-    return c.json({ success: true, provider: aiResult.provider, model: aiResult.model }, 200);
+    return c.json(
+      {
+        success: true,
+        provider: aiResult.provider,
+        model: aiResult.model,
+        usage: { totalTokens, estimatedCostUsd: estimatedCost }
+      },
+      200
+    );
   } catch (err) {
     console.error('Error generating AI response:', err);
     await sendSafeTelegramMessage(
@@ -235,9 +339,13 @@ telegramRouter.post('/webhook', async (c) => {
     );
     return c.json({ success: false, error: 'Failed to process AI response' }, 500);
   }
-});
+};
 
-// Helper endpoint to check or set Telegram webhook status (requires ADMIN_API_KEY)
+// Mount handler on root (for /webhooks/telegram) and on /webhook (for /telegram/webhook)
+telegramRouter.post('/', handleTelegramUpdate);
+telegramRouter.post('/webhook', handleTelegramUpdate);
+
+// Helper endpoint to check Telegram webhook status (requires ADMIN_API_KEY)
 telegramRouter.get('/webhook/info', async (c) => {
   const adminKey = c.req.header('x-admin-key');
   if (!c.env.ADMIN_API_KEY || adminKey !== c.env.ADMIN_API_KEY) {

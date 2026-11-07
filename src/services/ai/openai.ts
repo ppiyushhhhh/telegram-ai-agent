@@ -9,7 +9,10 @@ export class OpenAIProvider implements IAIProvider {
 
   constructor(private readonly apiKey?: string, private readonly defaultModel?: string) {
     if (apiKey) {
-      this.client = new OpenAI({ apiKey });
+      this.client = new OpenAI({
+        apiKey,
+        fetch: (url: any, init: any) => fetch(url, init)
+      });
     }
   }
 

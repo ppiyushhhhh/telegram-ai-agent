@@ -52,6 +52,8 @@ export function createApp(): Hono<{ Bindings: Env; Variables: AppVariables }> {
   app.route('/api/health', healthRouter);
 
   // Mount Telegram routes
+  app.route('/webhooks/telegram', telegramRouter);
+  app.route('/webhook/telegram', telegramRouter);
   app.route('/telegram', telegramRouter);
   app.route('/api/telegram', telegramRouter);
 
