@@ -37,3 +37,4 @@ export interface IAIProvider {
   generateCompletion(messages: AIMessage[], options?: CompletionOptions): Promise<CompletionResult>;
   generateEmbedding(text: string): Promise<EmbeddingResult>;
 }
+

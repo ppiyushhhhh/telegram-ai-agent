@@ -98,3 +98,4 @@ export class UnifiedAIService {
     throw new AppError('No configured AI provider available for vector embeddings.', 500, ERROR_CODES.INVALID_CONFIG);
   }
 }
+

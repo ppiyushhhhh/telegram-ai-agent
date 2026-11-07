@@ -4,7 +4,8 @@ import type { TelegramUpdate } from '../services/telegram/types';
 import { telegramWebhookAuthMiddleware } from '../middleware/telegram-auth';
 import { TelegramClient } from '../services/telegram/client';
 import { sendSafeTelegramMessage } from '../services/telegram/utils';
-import { OpenAIService } from '../services/openai/client';
+import { UnifiedAIService } from '../services/ai/unified';
+import { SemanticMemoryService } from '../services/memory/semantic';
 import { DatabaseService } from '../services/db/client';
 import { getAllowedUserIds } from '../config/env';
 
@@ -133,23 +134,41 @@ telegramRouter.post('/webhook', async (c) => {
   // Send typing indicator while processing AI query
   c.executionCtx.waitUntil(telegramClient.sendChatAction(chatId, 'typing').catch(() => {}));
 
-  // Process message through OpenAI
+  // Process message through Unified AI Service (OpenAI with automatic Gemini fallback)
   try {
-    const openai = new OpenAIService(c.env.OPENAI_API_KEY);
-    const model = c.env.OPENAI_MODEL || 'gpt-4o-mini';
+    const aiService = new UnifiedAIService(c.env);
+    const memoryService = new SemanticMemoryService(c.env, aiService);
+    const activeModel = c.env.OPENAI_MODEL || 'gpt-4o-mini';
 
     let conversationId = `chat_${chatId}`;
+    let systemInstruction =
+      'You are a helpful, concise, and highly capable private AI assistant communicating via Telegram. Keep responses formatted cleanly with markdown.';
+
+    // 1. Retrieve Semantic Long-Term Memories (from Cloudflare Vectorize)
+    if (sender) {
+      try {
+        const memories = await memoryService.queryRelevantMemories(sender.id, text, 3);
+        if (memories.length > 0) {
+          systemInstruction +=
+            '\n\nRelevant context recalled from your long-term memory about this user:\n' +
+            memories.map((m) => `• ${m.content}`).join('\n');
+        }
+      } catch (memErr) {
+        console.warn('Semantic memory query skipped:', memErr);
+      }
+    }
+
     const chatHistory: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [
       {
         role: 'system',
-        content:
-          'You are a helpful, concise, and highly capable private AI assistant communicating via Telegram. Keep responses formatted cleanly with markdown.'
+        content: systemInstruction
       }
     ];
 
+    // 2. Retrieve Short-Term Relational Conversation History (from Cloudflare D1)
     if (dbService && sender) {
       try {
-        const conv = await dbService.getOrCreateConversation(chatId, sender.id, model);
+        const conv = await dbService.getOrCreateConversation(chatId, sender.id, activeModel);
         conversationId = conv.id;
         const recentMessages = await dbService.getRecentMessages(conversationId, 6);
         for (const msg of recentMessages) {
@@ -163,22 +182,17 @@ telegramRouter.post('/webhook', async (c) => {
     // Add current user message
     chatHistory.push({ role: 'user', content: text });
 
-    // Generate AI response
-    const aiResponse = await openai.generateChatCompletion({
-      messages: chatHistory,
-      model,
+    // 3. Generate AI response (OpenAI primary with Gemini fallback)
+    const aiResult = await aiService.generateChatResponse(chatHistory, {
+      model: activeModel,
       temperature: c.env.AI_TEMPERATURE ? parseFloat(c.env.AI_TEMPERATURE) : 0.7,
       maxTokens: c.env.MAX_TOKENS ? parseInt(c.env.MAX_TOKENS, 10) : 1000
     });
 
-    // Send reply back to Telegram
-    await telegramClient.sendMessage({
-      chat_id: chatId,
-      text: aiResponse,
-      reply_to_message_id: message.message_id
-    });
+    // 4. Send reply back to Telegram safely (handles chunking if > 4096 chars and markdown fallback)
+    await sendSafeTelegramMessage(telegramClient, chatId, aiResult.text, message.message_id);
 
-    // Save history to D1 in background
+    // 5. Asynchronously persist message history to D1 and index semantic memory
     if (dbService && sender) {
       c.executionCtx.waitUntil(
         (async () => {
@@ -192,23 +206,33 @@ telegramRouter.post('/webhook', async (c) => {
             await dbService.saveMessage({
               conversationId,
               role: 'assistant',
-              content: aiResponse
+              content: aiResult.text,
+              tokensUsed: aiResult.usage?.totalTokens
             });
+
+            // Index meaningful exchanges into Vectorize for future semantic recall
+            if (text.length > 15 && memoryService.isVectorizeReady()) {
+              await memoryService.storeMemory(
+                sender.id,
+                `User asked: "${text}" | Assistant replied: "${aiResult.text.slice(0, 300)}"`
+              );
+            }
           } catch (e) {
-            console.error('Failed to save messages to D1:', e);
+            console.error('Failed to save messages to D1 or Vectorize:', e);
           }
         })()
       );
     }
 
-    return c.json({ success: true, message: 'Message processed' }, 200);
+    return c.json({ success: true, provider: aiResult.provider, model: aiResult.model }, 200);
   } catch (err) {
     console.error('Error generating AI response:', err);
-    await telegramClient.sendMessage({
-      chat_id: chatId,
-      text: '⚠️ An error occurred while generating a response. Please try again later.',
-      reply_to_message_id: message.message_id
-    });
+    await sendSafeTelegramMessage(
+      telegramClient,
+      chatId,
+      '⚠️ An error occurred while generating a response. Please try again later.',
+      message.message_id
+    );
     return c.json({ success: false, error: 'Failed to process AI response' }, 500);
   }
 });

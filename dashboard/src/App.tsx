@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { LayoutDashboard, Users, MessageSquare, ShieldAlert } from 'lucide-react';
+import { LayoutDashboard, Users, MessageSquare, ShieldAlert, Cpu } from 'lucide-react';
 import {
   api,
   type HealthStatus,
@@ -13,9 +13,10 @@ import { HealthMonitor } from './components/HealthMonitor';
 import { UserWhitelist } from './components/UserWhitelist';
 import { ConversationList } from './components/ConversationList';
 import { AuditLogView } from './components/AuditLogView';
+import { AiMemorySettings } from './components/AiMemorySettings';
 
 export const App: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<'overview' | 'whitelist' | 'conversations' | 'logs'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'whitelist' | 'conversations' | 'logs' | 'ai'>('overview');
   const [adminKey, setAdminKey] = useState<string>(() => localStorage.getItem('tg_admin_key') || '');
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -154,6 +155,13 @@ export const App: React.FC = () => {
             <ShieldAlert size={16} />
             <span>Security Logs ({logs.length})</span>
           </button>
+          <button
+            className={`tab-btn ${activeTab === 'ai' ? 'active' : ''}`}
+            onClick={() => setActiveTab('ai')}
+          >
+            <Cpu size={16} />
+            <span>AI &amp; Memory</span>
+          </button>
         </nav>
 
         {activeTab === 'overview' && <HealthMonitor health={health} overview={overview} />}
@@ -167,6 +175,7 @@ export const App: React.FC = () => {
           />
         )}
         {activeTab === 'logs' && <AuditLogView logs={logs} />}
+        {activeTab === 'ai' && <AiMemorySettings health={health} />}
       </main>
     </div>
   );
