@@ -163,6 +163,158 @@ The assistant implements an automatic, resilient AI provider chain:
 
 ---
 
+## 🗄️ Cloudflare D1 Database Architecture & Schema Deep-Dive
+
+The relational foundation of the assistant is powered by **Cloudflare D1**, a serverless, globally distributed SQL database built on SQLite with zero management overhead.
+
+* **Database Name:** `telegram-ai-agent-d1-uat`
+* **Database UUID:** `822915c4-31bc-4e99-b585-f047d7bb04a6`
+* **Region:** APAC (Primary colo: `SIN`)
+
+### 1. Database Entity-Relationship Diagram (ERD)
+
+```
+┌────────────────────────┐         ┌───────────────────────────────┐
+│         users          │ 1     * │         conversations         │
+├────────────────────────┼─────────┼───────────────────────────────┤
+│ id (PK, Telegram ID)   │         │ id (PK, UUID)                 │
+│ first_name             │         │ telegram_chat_id              │
+│ last_name              │         │ user_id (FK -> users.id)      │
+│ username               │         │ model                         │
+│ is_allowed (0 / 1)     │         │ system_prompt                 │
+│ created_at / updated_at│         │ created_at / updated_at       │
+└────────────────────────┘         └───────────────┬───────────────┘
+            │ 1                                    │ 1
+            │                                      │
+            │ *                                    │ *
+┌───────────▼────────────┐         ┌───────────────▼───────────────┐
+│        ai_usage        │         │           messages            │
+├────────────────────────┤         ├───────────────────────────────┤
+│ id (PK, UUID)          │         │ id (PK, UUID)                 │
+│ user_id (FK)           │         │ conversation_id (FK)          │
+│ conversation_id        │         │ telegram_message_id           │
+│ provider (gemini/cf/oa)│         │ role ('user'|'assistant'|'sys')│
+│ model                  │         │ content                       │
+│ prompt_tokens          │         │ tokens_used                   │
+│ completion_tokens      │         │ created_at                    │
+│ total_tokens           │         └───────────────────────────────┘
+│ estimated_cost_usd     │
+│ created_at             │
+└────────────────────────┘
+
+┌────────────────────────┐         ┌───────────────────────────────┐
+│   processed_updates    │         │          audit_logs           │
+├────────────────────────┤         ├───────────────────────────────┤
+│ update_id (PK)         │         │ id (PK, UUID)                 │
+│ chat_id                │         │ event_type                    │
+│ user_id                │         │ user_id / chat_id             │
+│ processed_at           │         │ payload (JSON)                │
+└────────────────────────┘         │ created_at                    │
+                                   └───────────────────────────────┘
+```
+
+### 2. Table-by-Table Schema Breakdown
+
+#### `users` Table
+Stores all Telegram users who interact with the bot and enforces access security:
+* `id` (`INTEGER PRIMARY KEY`): The numeric Telegram User ID (e.g. `9084869490`).
+* `first_name` (`TEXT NOT NULL`): User's first name as reported by Telegram API.
+* `last_name` (`TEXT`): User's last name (optional).
+* `username` (`TEXT`): User's Telegram username (optional).
+* `is_allowed` (`INTEGER NOT NULL DEFAULT 0`): `1` if authorized via `ALLOWED_TELEGRAM_USER_IDS`, `0` if blocked.
+* `created_at` / `updated_at`: ISO timestamp tracking registration and latest activity.
+
+#### `conversations` Table
+Tracks multi-turn chat sessions per Telegram chat:
+* `id` (`TEXT PRIMARY KEY`): Unique conversation identifier (e.g. `chat_9084869490` or UUID).
+* `telegram_chat_id` (`INTEGER NOT NULL`): The Telegram chat ID.
+* `user_id` (`INTEGER NOT NULL`): Foreign key referencing `users.id`.
+* `model` (`TEXT NOT NULL`): The active AI model for this conversation.
+* `system_prompt` (`TEXT`): Custom system instructions if set for this conversation.
+
+#### `messages` Table
+Maintains short-term chat history for contextual AI interactions:
+* `id` (`TEXT PRIMARY KEY`): Message UUID.
+* `conversation_id` (`TEXT NOT NULL`): Foreign key referencing `conversations.id`.
+* `telegram_message_id` (`INTEGER`): Original message ID from Telegram.
+* `role` (`TEXT NOT NULL`): Constrained to `'user'`, `'assistant'`, or `'system'`.
+* `content` (`TEXT NOT NULL`): Full text content of the message.
+* `tokens_used` (`INTEGER DEFAULT 0`): Tokens consumed by this turn.
+
+#### `processed_updates` Table (Idempotency Guard)
+Guarantees duplicate update prevention so duplicate webhook deliveries are never processed twice:
+* `update_id` (`INTEGER PRIMARY KEY`): Telegram's unique delivery update ID.
+* `chat_id` (`INTEGER`): Chat where update originated.
+* `user_id` (`INTEGER`): User who sent the update.
+* `processed_at` (`TEXT NOT NULL`): Timestamp of initial processing.
+
+#### `ai_usage` Table (Cost & Telemetry Tracking)
+Audits token usage and estimated API cost across all AI providers:
+* `id` (`TEXT PRIMARY KEY`): UUID for this usage record.
+* `user_id` (`INTEGER NOT NULL`): User who initiated the AI completion.
+* `conversation_id` (`TEXT`): Contextual conversation ID.
+* `provider` (`TEXT NOT NULL`): Active provider (`'gemini'`, `'workers-ai'`, or `'openai'`).
+* `model` (`TEXT NOT NULL`): Specific model invoked (e.g. `@cf/meta/llama-3.3-70b-instruct-fp8-fast`).
+* `prompt_tokens`, `completion_tokens`, `total_tokens`: Token metrics.
+* `estimated_cost_usd` (`REAL NOT NULL`): Computed cost based on current provider pricing matrices.
+
+#### `system_settings` Table
+Dynamic key-value settings table loaded at runtime to adjust behavior without redeploying:
+* `key` (`TEXT PRIMARY KEY`): Setting identifier (e.g. `default_model`, `default_temperature`, `allowlist_enforced`).
+* `value` (`TEXT NOT NULL`): Configuration value.
+* `description` (`TEXT`): Human-readable purpose of this setting.
+
+### 3. Data Flow on Incoming Webhook Updates
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor User as Telegram User
+    participant TG as Telegram Bot API
+    participant Worker as Cloudflare Worker (UAT)
+    participant D1 as Cloudflare D1 Database
+    participant AI as Workers AI / Gemini
+
+    User->>TG: Sends text message ("ping")
+    TG->>Worker: POST /webhooks/telegram (X-Telegram-Bot-Api-Secret-Token)
+    Worker->>Worker: Verify Webhook Secret Token
+    Worker->>D1: Check processed_updates (update_id)
+    alt Update already processed
+        Worker-->>TG: 200 OK (Duplicate ignored)
+    else First delivery
+        Worker->>D1: Insert into processed_updates
+        Worker->>D1: Upsert into users (ID, name, allowlist status)
+        Worker->>D1: Get or Create conversation session
+        Worker->>D1: Retrieve recent messages (history context)
+        Worker->>AI: Generate response (LLaMA 3.3 70B / Gemini)
+        AI-->>Worker: Completion result + token metrics
+        Worker->>TG: sendMessage (safe markdown chunking)
+        Worker--)D1: Background: Save user & assistant messages
+        Worker--)D1: Background: Record token usage in ai_usage
+        Worker-->>TG: 200 OK
+    end
+```
+
+### 4. Useful D1 Database Commands
+
+You can inspect and query your live database directly using Wrangler:
+
+```bash
+# View all registered users
+npx wrangler d1 execute telegram-ai-agent-d1-uat --remote --env uat --command "SELECT * FROM users;"
+
+# View recent conversation messages
+npx wrangler d1 execute telegram-ai-agent-d1-uat --remote --env uat --command "SELECT role, content, created_at FROM messages ORDER BY created_at DESC LIMIT 5;"
+
+# Check total token usage and estimated cost
+npx wrangler d1 execute telegram-ai-agent-d1-uat --remote --env uat --command "SELECT provider, model, SUM(total_tokens) AS tokens, SUM(estimated_cost_usd) AS cost FROM ai_usage GROUP BY provider, model;"
+
+# Inspect duplicate update prevention table
+npx wrangler d1 execute telegram-ai-agent-d1-uat --remote --env uat --command "SELECT COUNT(*) AS total_processed_updates FROM processed_updates;"
+```
+
+---
+
 ## 🛡️ Security & Access Control
 
 - **Numeric User ID Allowlist**: Only authorized Telegram user IDs (e.g. `9084869490`) are permitted. Unapproved users receive an access-denied message and their attempts are recorded in audit logs.
