@@ -1,6 +1,20 @@
 # Telegram AI Agent
 
-A private, enterprise-ready Telegram AI Assistant built from scratch using **TypeScript**, **Cloudflare Workers**, **Hono**, **Cloudflare D1**, **Cloudflare R2**, **Cloudflare Durable Objects**, **Cloudflare Queues**, **Cloudflare Vectorize**, **OpenAI API**, **Gemini API**, and a modern **React + Vite** Admin Dashboard.
+A private, enterprise-ready Telegram AI Assistant built from scratch using **TypeScript**, **Cloudflare Workers**, **Hono**, **Cloudflare D1**, **Cloudflare Durable Objects**, **Cloudflare Workers AI**, **Google Gemini API**, and a modern **React + Vite** Admin Dashboard.
+
+[![CI Pipeline](https://github.com/ppiyushhhhh/telegram-ai-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/ppiyushhhhh/telegram-ai-agent/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Environment: UAT](https://img.shields.io/badge/Environment-UAT%20Live-brightgreen)](https://telegram-ai-agent-uat.piyushprasad8122.workers.dev/health)
+
+---
+
+## 🤖 Live Bot Profile
+
+* **Bot Name:** Piyush AI Assistant
+* **Bot Username:** [@ppiyushhhhBot](https://t.me/ppiyushhhhBot)
+* **Authorized User ID:** `9084869490` (numeric allowlist enforcement)
+* **Live UAT Worker:** `https://telegram-ai-agent-uat.piyushprasad8122.workers.dev`
+* **Live Health Check:** `https://telegram-ai-agent-uat.piyushprasad8122.workers.dev/health`
 
 ---
 
@@ -10,44 +24,47 @@ A private, enterprise-ready Telegram AI Assistant built from scratch using **Typ
 telegram-ai-agent/
 ├── .github/
 │   └── workflows/
-│       ├── ci.yml                 # Automated typecheck & build validation
-│       ├── deploy-uat.yml         # UAT environment staging deployment
+│       ├── ci.yml                 # Automated typecheck & 21-test validation suite
+│       ├── deploy-uat.yml         # Cloudflare UAT environment deployment workflow
 │       └── deploy-live.yml        # Production deployment (Requires Manual Approval)
 ├── dashboard/                     # React + Vite Admin Dashboard
 │   ├── src/
-│   │   ├── components/            # Health, Whitelist, Conversations, Audit Logs
-│   │   ├── services/api.ts        # Typed API client
+│   │   ├── components/            # HealthMonitor, UserWhitelist, ConversationList, AuditLogView, AiMemorySettings
+│   │   ├── services/api.ts        # Typed API client with localStorage persistence
 │   │   ├── App.tsx
 │   │   └── main.tsx
 │   ├── package.json
-│   └── vite.config.ts
+│   └── vite.config.ts             # Dev proxy targeting local worker on port 8787
 ├── migrations/
-│   └── 0001_initial_schema.sql    # D1 SQLite schema (users, convs, messages, audit)
+│   ├── 0001_initial_schema.sql    # D1 SQLite schema (users, convs, messages, audit)
+│   └── 0002_add_updates_usage_settings.sql # Idempotency, usage metrics & system settings
 ├── src/
-│   ├── index.ts                   # Cloudflare Worker fetch entrypoint
+│   ├── index.ts                   # Cloudflare Worker fetch entrypoint & queue handler
 │   ├── app.ts                     # Hono application setup & route registry
 │   ├── config/
-│   │   ├── constants.ts           # Constants, model defaults & error codes
+│   │   ├── constants.ts           # Constants, model defaults, bot settings & error codes
 │   │   └── env.ts                 # Zod validation for runtime environment bindings
+│   ├── durable-objects/
+│   │   └── SessionDurableObject.ts# SQLite-backed Durable Object for atomic state
 │   ├── middleware/
-│   │   ├── admin-auth.ts          # Admin API key authorization (x-admin-key)
+│   │   ├── admin-auth.ts          # Admin API key authorization (x-admin-key header)
 │   │   ├── error-handler.ts       # Centralized error mapping & formatting
 │   │   ├── logger.ts              # Structured JSON request logging
 │   │   └── telegram-auth.ts       # Telegram webhook secret verification
 │   ├── routes/
 │   │   ├── admin.ts               # Authenticated Admin REST API (/api/admin/*)
 │   │   ├── health.ts              # Deep health-check endpoint (/health, /api/health)
-│   │   └── telegram.ts            # Telegram webhook handler & slash commands
+│   │   └── telegram.ts            # Telegram webhook handler, idempotency & slash commands
 │   ├── services/
-│   │   ├── db/                    # Cloudflare D1 database operations & models
-│   │   ├── openai/                # OpenAI SDK client wrapper (Primary AI provider)
+│   │   ├── ai/                    # Multi-provider AI engine (Gemini, Workers AI, OpenAI)
+│   │   ├── db/                    # Cloudflare D1 database operations & metrics client
+│   │   ├── memory/                # Semantic memory service via Vectorize
 │   │   └── telegram/              # Telegram API client, safe chunker & utilities
 │   └── types/
-│       └── index.ts               # Worker Env bindings (D1, R2, Vectorize, Queues, DO)
+│       └── index.ts               # Worker Env bindings (D1, AI, R2, Vectorize, DO)
 ├── tests/
-│   └── app.test.ts                # Test suite for health, auth, admin API, routes
+│   └── app.test.ts                # Complete 21/21 integration test suite
 ├── .dev.vars.example              # Secret template for local development
-├── .gitignore                     # Git ignore rules
 ├── package.json                   # Dependencies, scripts & engine requirements
 ├── tsconfig.json                  # TypeScript compiler options
 ├── wrangler.jsonc                 # Cloudflare Wrangler multi-environment config
@@ -56,75 +73,85 @@ telegram-ai-agent/
 
 ---
 
-## 🧠 Memory & AI Architecture
+## 🧠 Multi-Tier AI Engine & Fallback Architecture
 
-1. **Short-Term Memory**:
-   - Fast, ephemeral conversational memory managed via Cloudflare D1 / Durable Objects.
-   - Preserves multi-turn conversational context with `/new` and `/clear` command capabilities to reset session context.
-2. **Long-Term Relational Memory (Cloudflare D1)**:
-   - Relational tables for authorized Telegram users, conversation history, individual messages with roles, update idempotency, and audit trails.
+The assistant implements an automatic, resilient AI provider chain:
+
+1. **Primary Provider — Google Gemini API**:
+   - Chat Model: `gemini-3.8-flash`
+   - Embedding Model: `gemini-embedding-2`
+   - Configured via encrypted `GEMINI_API_KEY`.
+2. **Secondary Provider — Cloudflare Workers AI (Edge-Native Zero-Credential)**:
+   - Primary Model: `@cf/meta/llama-3.3-70b-instruct-fp8-fast`
+   - Automatic In-Engine Fallback: `@cf/meta/llama-3.2-3b-instruct` $\rightarrow$ `@cf/meta/llama-3-8b-instruct`
+   - Zero external credentials required — runs natively on Cloudflare edge GPUs.
+3. **Tertiary Provider (Optional) — OpenAI**:
+   - Model: `gpt-4o-mini`
+   - Decoupled and strictly optional. Only invoked if `OPENAI_API_KEY` is supplied.
+
+---
+
+## 💾 Memory Architecture
+
+1. **Short-Term Relational Memory (Cloudflare D1)**:
+   - Preserves conversation history across sessions.
+   - User commands `/new` and `/clear` allow resetting conversation state.
+2. **Long-Term Memory & Deduplication (Cloudflare D1)**:
+   - `users`: Tracks numeric Telegram IDs, names, usernames, and approval status.
+   - `conversations`: Links user chats with active model configurations.
+   - `messages`: Stores user and assistant turns with token usage.
+   - `processed_updates`: Guarantees idempotency via Telegram `update_id` tracking.
+   - `ai_usage`: Logs prompt tokens, completion tokens, model names, and estimated USD costs.
+   - `system_settings`: Key-value configuration for runtime tuning.
 3. **Semantic Memory (Cloudflare Vectorize)**:
-   - Vector embeddings using `gemini-embedding-2` with fallback to Cloudflare Workers AI (`@cf/baai/bge-base-en-v1.5`) for semantic knowledge retrieval.
-4. **Media & Document Storage (Cloudflare R2)**:
-   - Media bucket binding (`MEDIA_BUCKET`) for voice notes, image generation outputs, document uploads, and chat exports.
-5. **Triple-Tier AI Engine & Automated Fallback**:
-   - **Primary**: Google Gemini API (`gemini-3.8-flash` for chat, `gemini-embedding-2` for embeddings).
-   - **Secondary (Edge-Native Fallback)**: Cloudflare Workers AI (`@cf/meta/llama-3.3-70b-instruct` / `@cf/qwen/qwen3.8-27b`). Zero external API credentials required.
-   - **Tertiary (Optional)**: OpenAI API (`gpt-4o-mini`). Strictly optional and only invoked if `OPENAI_API_KEY` is explicitly configured. Never silently switched to without credentials.
-   - Dynamic provider selection via `PRIMARY_AI_PROVIDER` (`gemini` | `workers-ai` | `openai`).
-   - Zero OpenAI dependency: `OPENAI_API_KEY` is fully decoupled and optional. Automated tests pass with zero live API keys.
+   - Embeds user context for multi-session semantic recall.
 
 ---
 
-## 🛡️ Security & Privacy Guardrails
+## 🛡️ Security & Access Control
 
-- **Zero Secrets in Repository**: Secrets are strictly injected through Cloudflare Secrets (`wrangler secret put`) or `.dev.vars` (which is `.gitignore`d).
-- **Approved User Whitelist**: Strict user access control via `ALLOWED_TELEGRAM_USER_IDS` and D1 `users.is_allowed`. Unapproved users are blocked, notified, and logged to `audit_logs`.
-- **Fail-Safe Webhook Validation**: Telegram webhook requires the exact `X-Telegram-Bot-Api-Secret-Token` header.
-- **Admin API Protection**: Dashboard endpoints require `x-admin-key` authentication.
-- **Sanitized Logging**: Loggers strip sensitive tokens, authorization headers, and request bodies.
-- **Manual Approval for LIVE**: Production deployments require explicit manual trigger and GitHub Actions approval (`deploy-live.yml`).
+- **Numeric User ID Allowlist**: Only authorized Telegram user IDs (e.g. `9084869490`) are permitted. Unapproved users receive an access-denied message and their attempts are recorded in audit logs.
+- **Webhook Authentication**: All webhook calls verify `X-Telegram-Bot-Api-Secret-Token` matching `TELEGRAM_WEBHOOK_SECRET`.
+- **Encrypted Secrets**: Sensitive keys (`TELEGRAM_BOT_TOKEN`, `TELEGRAM_WEBHOOK_SECRET`, `ADMIN_API_KEY`, `GEMINI_API_KEY`) are stored in Cloudflare encrypted secrets.
+- **Admin Dashboard Protection**: Admin endpoints require the `x-admin-key` header.
+- **Safe Splitting & Delivery**: Long AI responses are safely chunked to fit Telegram's 4096-character limit, with automatic fallback from Markdown to plain text.
 
 ---
 
-## 🚀 Foundation Health-Check Endpoint (`GET /health`)
+## 🎮 Telegram Commands
 
-The `/health` endpoint inspects the status of the entire stack:
+| Command | Description |
+| :--- | :--- |
+| `/start` | Welcome message and introduction to the assistant. |
+| `/help` | Complete command guide and usage tips. |
+| `/status` | Real-time report of active AI provider, model, latency, and token metrics. |
+| `/new` | Start a brand-new conversation topic. |
+| `/clear` | Clear the current chat context. |
+
+---
+
+## 📊 Foundation Health-Check (`GET /health`)
+
+Returns real-time diagnostics of the system:
 
 ```json
 {
   "success": true,
   "data": {
-    "status": "healthy",
-    "version": "0.1.0",
+    "status": "ok",
+    "version": "0.2.0",
     "environment": "uat",
-    "timestamp": "2026-11-07T16:53:00.000Z",
-    "uptimeSeconds": 240,
     "checks": {
-      "database": {
-        "status": "ok",
-        "latencyMs": 1
-      },
-      "telegram": {
-        "status": "configured"
-      },
+      "database": { "status": "ok", "latencyMs": 62 },
+      "telegram": { "status": "configured", "botUsername": "ppiyushhhhBot" },
       "aiProviders": {
         "primary": "gemini",
-        "gemini": {
-          "status": "configured",
-          "model": "gemini-3.8-flash"
-        },
-        "workersAi": {
-          "status": "configured",
-          "model": "@cf/meta/llama-3.3-70b-instruct"
-        },
-        "openai": {
-          "status": "not_configured",
-          "model": "gpt-4o-mini"
-        }
+        "gemini": { "status": "configured", "model": "gemini-3.8-flash" },
+        "workersAi": { "status": "configured", "model": "@cf/meta/llama-3.3-70b-instruct-fp8-fast" },
+        "openai": { "status": "not_configured", "model": "gpt-4o-mini" }
       },
       "storage": {
-        "r2": "bound",
+        "r2": "not_bound",
         "vectorize": "not_bound",
         "queues": "not_bound"
       }
@@ -135,70 +162,57 @@ The `/health` endpoint inspects the status of the entire stack:
 
 ---
 
-## ⚙️ Setup & Local Development
+## ⚙️ Development & Deployment
 
-### 1. Install Dependencies
+### 1. Local Setup
 ```bash
+# Install dependencies
 npm install
 npm --prefix dashboard install
-```
 
-### 2. Configure Local Secrets
-Copy the example file to `.dev.vars`:
-```bash
+# Configure local secrets
 cp .dev.vars.example .dev.vars
 ```
-Populate `.dev.vars` with your tokens (Telegram Bot Token, OpenAI API Key, Gemini API Key, Webhook Secret, Admin Key).
 
-### 3. Initialize Local D1 Database
+### 2. Testing & Quality Checks
 ```bash
-npm run d1:migrations:apply:local
-```
-
-### 4. Start the Application
-- **Start Backend Worker**:
-  ```bash
-  npm run dev
-  ```
-  Runs on `http://127.0.0.1:8787`.
-- **Start Admin Dashboard**:
-  ```bash
-  npm run dashboard:dev
-  ```
-  Runs on `http://localhost:3000` with automated proxy to Worker.
-
----
-
-## 🧪 Validation & Testing Commands
-
-```bash
-# Typecheck backend
+# TypeScript typecheck
 npm run typecheck
 
-# Run test suite
+# Run full integration test suite (21 tests)
 npm test
 
-# Dry-run Worker build (Cloudflare Wrangler)
+# Build worker dry-run
 npm run build
 
 # Build React Admin Dashboard
 npm run dashboard:build
 ```
 
----
-
-## 📦 Environments & Deployment Workflow
-
-| Environment | Worker Name | D1 Binding | R2 Binding | Purpose |
-|---|---|---|---|---|
-| **Development** | `telegram-ai-agent` | `telegram-ai-agent-d1-local` | `telegram-ai-agent-r2-local` | Local Miniflare development |
-| **UAT (Staging)** | `telegram-ai-agent-uat` | `telegram-ai-agent-d1-uat` | `telegram-ai-agent-r2-uat` | Staging / testing with real Telegram |
-| **LIVE (Production)** | `telegram-ai-agent-live` | `telegram-ai-agent-d1-live` | `telegram-ai-agent-r2-live` | Production serving verified users |
-
-### Deploying to UAT:
+### 3. Cloudflare Deployment (UAT)
 ```bash
+# Run database migrations
+npx wrangler d1 migrations apply telegram-ai-agent-d1-uat --remote --env uat
+
+# Set encrypted secrets
+npx wrangler secret put TELEGRAM_BOT_TOKEN --env uat
+npx wrangler secret put TELEGRAM_WEBHOOK_SECRET --env uat
+npx wrangler secret put ADMIN_API_KEY --env uat
+npx wrangler secret put GEMINI_API_KEY --env uat
+
+# Deploy Worker
 npm run deploy:uat
 ```
 
-### Deploying to LIVE (Manual Approval Required):
-Deployments to production are gated via the GitHub Actions workflow `deploy-live.yml`, requiring the user to type `DEPLOY_LIVE` and undergo GitHub environment manual reviewer approval.
+### 4. Register Telegram Webhook
+```bash
+curl -X POST https://telegram-ai-agent-uat.piyushprasad8122.workers.dev/api/admin/telegram/set-webhook \
+  -H "x-admin-key: <YOUR_ADMIN_API_KEY>" \
+  -H "Content-Type: application/json" \
+  -d '{"url": "https://telegram-ai-agent-uat.piyushprasad8122.workers.dev"}'
+```
+
+---
+
+## 📄 License
+MIT License. Built with Cloudflare Workers & Google Gemini.
