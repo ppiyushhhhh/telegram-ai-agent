@@ -22,19 +22,32 @@ A private, enterprise-ready Telegram AI Assistant built from scratch using **Typ
 
 The application is deployed serverlessly on **Cloudflare Workers** with zero cold starts, global edge routing, and built-in database and AI infrastructure.
 
-![Cloudflare Setup Overview](docs/images/cloudflare-setup.png)
+### 1. Active Worker Deployment & Management
+The worker `telegram-ai-agent-uat` is active, executing on Cloudflare's edge network, and routing incoming Telegram webhook requests:
 
-### What Was Configured & Deployed:
+![Cloudflare Worker Overview](docs/images/cloudflare-setup.png)
+
+### 2. Edge Bindings Architecture & Zero-Error Execution
+The worker connects natively to Workers AI, D1 Database, and Durable Objects with 0 errors and sub-10ms CPU time:
+
+![Cloudflare Worker Bindings & Topology](docs/images/cloudflare-worker-bindings.png)
+
+### 3. Serverless D1 SQL Database (`Storage & databases` ➔ `D1`)
+The relational database `telegram-ai-agent-d1-uat` stores authorized users, conversation context, token metrics, and deduplication records:
+
+![Cloudflare D1 Database Active](docs/images/cloudflare-d1-database.png)
+
+### Detailed Configuration Breakdown:
 
 #### 1. Account & Worker Environment
 * **Account ID:** `f176e1ac285c0c0b26002f5b66e4c364`
 * **Subdomain:** `piyushprasad8122.workers.dev`
-* **Worker Target:** `telegram-ai-agent-uat` running on Cloudflare's global edge network.
+* **Worker Target:** `telegram-ai-agent-uat` running live on Cloudflare's global edge network.
 
-#### 2. Cloudflare D1 SQL Database (`Storage & databases` ➔ `D1`)
-* **Database Name:** `telegram-ai-agent-d1-uat`
+#### 2. Cloudflare D1 SQL Database (`telegram-ai-agent-d1-uat`)
 * **Database UUID:** `822915c4-31bc-4e99-b585-f047d7bb04a6`
 * **Region:** APAC (Singapore `SIN` primary colo)
+* **Performance:** Over 129 queries processed, with 168+ rows read and 153+ rows written.
 * **Applied Migrations:**
   * `0001_initial_schema.sql` — Initializes `users`, `conversations`, `messages`, and `audit_logs` tables.
   * `0002_add_updates_usage_settings.sql` — Provisions `processed_updates` (for webhook deduplication), `ai_usage` (token/cost telemetry), and `system_settings`.
