@@ -40,55 +40,45 @@ export class WorkersAIProvider implements IAIProvider {
       content: m.content
     }));
 
-    try {
-      const response = await this.aiBinding.run(model, {
-        messages: formattedMessages,
-        max_tokens: options?.maxTokens ?? DEFAULT_MAX_TOKENS,
-        temperature: options?.temperature ?? DEFAULT_AI_TEMPERATURE
-      });
+    const candidateModels = [
+      model,
+      '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
+      '@cf/meta/llama-3.2-3b-instruct',
+      '@cf/meta/llama-3-8b-instruct'
+    ];
+    // Deduplicate candidate models while preserving order
+    const uniqueModels = Array.from(new Set(candidateModels));
 
-      const text = typeof response === 'string' ? response : (response?.response || '');
+    let lastError: unknown;
+    for (const targetModel of uniqueModels) {
+      try {
+        const response = await this.aiBinding.run(targetModel, {
+          messages: formattedMessages,
+          max_tokens: options?.maxTokens ?? DEFAULT_MAX_TOKENS,
+          temperature: options?.temperature ?? DEFAULT_AI_TEMPERATURE
+        });
 
-      return {
-        text,
-        provider: 'workers-ai',
-        model,
-        usage: {
-          promptTokens: 0,
-          completionTokens: 0,
-          totalTokens: 0
-        }
-      };
-    } catch (err) {
-      // Automatic edge fallback: if the specific model is unavailable or rate-limited, try the ultra-fast Llama 3.1 8B
-      const fallbackModel = '@cf/meta/llama-3.1-8b-instruct';
-      if (model !== fallbackModel) {
-        try {
-          console.warn(`Workers AI model '${model}' failed. Attempting fallback to '${fallbackModel}'...`);
-          const fallbackResp = await this.aiBinding.run(fallbackModel, {
-            messages: formattedMessages,
-            max_tokens: options?.maxTokens ?? DEFAULT_MAX_TOKENS,
-            temperature: options?.temperature ?? DEFAULT_AI_TEMPERATURE
-          });
-          const text = typeof fallbackResp === 'string' ? fallbackResp : (fallbackResp?.response || '');
+        const text = typeof response === 'string' ? response : (response?.response || '');
+        if (text && text.trim().length > 0) {
           return {
             text,
             provider: 'workers-ai',
-            model: fallbackModel,
+            model: targetModel,
             usage: {
               promptTokens: 0,
               completionTokens: 0,
               totalTokens: 0
             }
           };
-        } catch (fallbackErr) {
-          console.error(`Workers AI fallback model '${fallbackModel}' also failed:`, fallbackErr);
         }
+      } catch (err) {
+        lastError = err;
+        console.warn(`Workers AI model '${targetModel}' failed: ${err instanceof Error ? err.message : String(err)}. Trying next candidate...`);
       }
-
-      const msg = err instanceof Error ? err.message : String(err);
-      throw new AppError(`Workers AI error: ${msg}`, 502, ERROR_CODES.WORKERS_AI_ERROR, { originalError: msg });
     }
+
+    const msg = lastError instanceof Error ? lastError.message : String(lastError);
+    throw new AppError(`Workers AI error: ${msg}`, 502, ERROR_CODES.WORKERS_AI_ERROR, { originalError: msg });
   }
 
   public async generateEmbedding(text: string): Promise<EmbeddingResult> {

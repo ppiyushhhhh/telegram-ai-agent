@@ -13,7 +13,7 @@ export const DEFAULT_ALLOWED_USER_ID = '9084869490';
 export const DEFAULT_PRIMARY_PROVIDER = 'gemini';
 export const DEFAULT_GEMINI_MODEL = 'gemini-3.8-flash';
 export const DEFAULT_GEMINI_EMBEDDING_MODEL = 'gemini-embedding-2';
-export const DEFAULT_WORKERS_AI_MODEL = '@cf/meta/llama-3.1-8b-instruct';
+export const DEFAULT_WORKERS_AI_MODEL = '@cf/meta/llama-3.3-70b-instruct-fp8-fast';
 export const DEFAULT_WORKERS_AI_EMBEDDING_MODEL = '@cf/baai/bge-base-en-v1.5';
 export const DEFAULT_OPENAI_MODEL = 'gpt-4o-mini';
 
