@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { LayoutDashboard, Users, MessageSquare, ShieldAlert, Cpu } from 'lucide-react';
 import {
   api,
+  DEFAULT_ADMIN_KEY,
   type HealthStatus,
   type SystemOverview,
   type AdminUser,
@@ -17,7 +18,7 @@ import { AiMemorySettings } from './components/AiMemorySettings';
 
 export const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'overview' | 'whitelist' | 'conversations' | 'logs' | 'ai'>('overview');
-  const [adminKey, setAdminKey] = useState<string>(() => localStorage.getItem('tg_admin_key') || '');
+  const [adminKey, setAdminKey] = useState<string>(() => localStorage.getItem('tg_admin_key') || DEFAULT_ADMIN_KEY);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 

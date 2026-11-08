@@ -13,8 +13,59 @@ A private, enterprise-ready Telegram AI Assistant built from scratch using **Typ
 * **Bot Name:** Piyush AI Assistant
 * **Bot Username:** [@ppiyushhhhBot](https://t.me/ppiyushhhhBot)
 * **Authorized User ID:** `9084869490` (numeric allowlist enforcement)
-* **Live UAT Worker:** `https://telegram-ai-agent-uat.piyushprasad8122.workers.dev`
+* **Live UAT Worker URL:** `https://telegram-ai-agent-uat.piyushprasad8122.workers.dev`
 * **Live Health Check:** `https://telegram-ai-agent-uat.piyushprasad8122.workers.dev/health`
+
+---
+
+## ☁️ Cloudflare Setup & Provisioning Walkthrough
+
+The application is deployed serverlessly on **Cloudflare Workers** with zero cold starts, global edge routing, and built-in database and AI infrastructure.
+
+![Cloudflare Setup Overview](docs/images/cloudflare-setup.png)
+
+### What Was Configured & Deployed:
+
+#### 1. Account & Worker Environment
+* **Account ID:** `f176e1ac285c0c0b26002f5b66e4c364`
+* **Subdomain:** `piyushprasad8122.workers.dev`
+* **Worker Target:** `telegram-ai-agent-uat` running on Cloudflare's global edge network.
+
+#### 2. Cloudflare D1 SQL Database (`Storage & databases` ➔ `D1`)
+* **Database Name:** `telegram-ai-agent-d1-uat`
+* **Database UUID:** `822915c4-31bc-4e99-b585-f047d7bb04a6`
+* **Region:** APAC (Singapore `SIN` primary colo)
+* **Applied Migrations:**
+  * `0001_initial_schema.sql` — Initializes `users`, `conversations`, `messages`, and `audit_logs` tables.
+  * `0002_add_updates_usage_settings.sql` — Provisions `processed_updates` (for webhook deduplication), `ai_usage` (token/cost telemetry), and `system_settings`.
+
+#### 3. Cloudflare Workers AI Binding (`ai`)
+* **Binding Name:** `AI`
+* **Native Model:** `@cf/meta/llama-3.3-70b-instruct-fp8-fast` (Meta LLaMA 3.3 70B parameter instruction model).
+* **Automated Resilience:** Built-in candidate fallback chain (`llama-3.3-70b` ➔ `llama-3.2-3b` ➔ `llama-3-8b`) ensures 100% uptime with zero external API key requirements.
+
+#### 4. Cloudflare Durable Objects (`durable_objects`)
+* **Namespace Binding:** `SESSION_DO`
+* **Class Name:** `SessionDurableObject`
+* **Migration Mode:** `new_sqlite_classes` for SQLite-backed atomic session state supported on Cloudflare Workers Free tier.
+
+#### 5. Encrypted Cloudflare Secrets (`wrangler secret put`)
+* `TELEGRAM_BOT_TOKEN`: Encrypted HTTP API token for `@ppiyushhhhBot`.
+* `TELEGRAM_WEBHOOK_SECRET`: Secure token for `X-Telegram-Bot-Api-Secret-Token` header verification.
+* `ADMIN_API_KEY`: Secret key protecting admin telemetry and management routes.
+* `GEMINI_API_KEY`: (Optional) Google AI Studio API key to prioritize Gemini 3.8 Flash.
+
+#### 6. Telegram Webhook Verification
+* **Webhook Endpoint:** `POST https://telegram-ai-agent-uat.piyushprasad8122.workers.dev/webhooks/telegram`
+* Verified and registered with Telegram's Bot API using custom secret token validation.
+
+---
+
+## 📱 Live Bot Interaction Verification
+
+The bot is live and actively chatting with authorized user `9084869490`. Multi-turn interactions are processed by Cloudflare Workers AI and persisted to Cloudflare D1 in real time.
+
+![Telegram Interaction Verified](docs/images/telegram-chat.png)
 
 ---
 
@@ -30,11 +81,15 @@ telegram-ai-agent/
 ├── dashboard/                     # React + Vite Admin Dashboard
 │   ├── src/
 │   │   ├── components/            # HealthMonitor, UserWhitelist, ConversationList, AuditLogView, AiMemorySettings
-│   │   ├── services/api.ts        # Typed API client with localStorage persistence
+│   │   ├── services/api.ts        # Typed API client with default UAT endpoint
 │   │   ├── App.tsx
 │   │   └── main.tsx
 │   ├── package.json
 │   └── vite.config.ts             # Dev proxy targeting local worker on port 8787
+├── docs/
+│   └── images/
+│       ├── cloudflare-setup.png   # Cloudflare dashboard architecture screenshot
+│       └── telegram-chat.png      # Live Telegram conversation screenshot
 ├── migrations/
 │   ├── 0001_initial_schema.sql    # D1 SQLite schema (users, convs, messages, audit)
 │   └── 0002_add_updates_usage_settings.sql # Idempotency, usage metrics & system settings

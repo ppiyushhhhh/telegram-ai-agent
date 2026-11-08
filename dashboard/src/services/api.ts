@@ -156,7 +156,10 @@ export class DashboardApiClient {
   }
 }
 
+export const DEFAULT_API_URL = 'https://telegram-ai-agent-uat.piyushprasad8122.workers.dev';
+export const DEFAULT_ADMIN_KEY = '4eee3a7d9a558aeef6bbf01bd7b783a4038dbc34dd82cb1d';
+
 export const api = new DashboardApiClient(
-  localStorage.getItem('tg_api_url') || import.meta.env.VITE_API_URL || '',
-  localStorage.getItem('tg_admin_key') || ''
+  localStorage.getItem('tg_api_url') || import.meta.env.VITE_API_URL || DEFAULT_API_URL,
+  localStorage.getItem('tg_admin_key') || DEFAULT_ADMIN_KEY
 );
