@@ -50,7 +50,7 @@
   "migrations": [
     {
       "tag": "v1",
-      "new_classes": ["SessionDurableObject"]
+      "new_sqlite_classes": ["SessionDurableObject"]
     }
   ],
   // ===========================================================================
@@ -82,17 +82,31 @@
         {
           "binding": "DB",
           "database_name": "telegram-ai-agent-d1-uat",
-          // Set to your Cloudflare D1 UUID after running: wrangler d1 create telegram-ai-agent-d1-uat
-          "database_id": "TODO_REPLACE_WITH_UAT_D1_ID",
+          "database_id": "822915c4-31bc-4e99-b585-f047d7bb04a6",
           "migrations_dir": "migrations"
         }
       ],
-      "r2_buckets": [
+      "durable_objects": {
+        "bindings": [
+          {
+            "name": "SESSION_DO",
+            "class_name": "SessionDurableObject"
+          }
+        ]
+      },
+      "migrations": [
         {
-          "binding": "MEDIA_BUCKET",
-          "bucket_name": "telegram-ai-agent-r2-uat"
+          "tag": "v1",
+          "new_sqlite_classes": ["SessionDurableObject"]
         }
       ]
+      // R2 bucket can be enabled when Cloudflare R2 is activated on the account:
+      // "r2_buckets": [
+      //   {
+      //     "binding": "MEDIA_BUCKET",
+      //     "bucket_name": "telegram-ai-agent-r2-uat"
+      //   }
+      // ]
     },
     // -------------------------------------------------------------------------
     // LIVE Environment (Production)
