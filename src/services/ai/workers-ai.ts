@@ -60,6 +60,32 @@ export class WorkersAIProvider implements IAIProvider {
         }
       };
     } catch (err) {
+      // Automatic edge fallback: if the specific model is unavailable or rate-limited, try the ultra-fast Llama 3.1 8B
+      const fallbackModel = '@cf/meta/llama-3.1-8b-instruct';
+      if (model !== fallbackModel) {
+        try {
+          console.warn(`Workers AI model '${model}' failed. Attempting fallback to '${fallbackModel}'...`);
+          const fallbackResp = await this.aiBinding.run(fallbackModel, {
+            messages: formattedMessages,
+            max_tokens: options?.maxTokens ?? DEFAULT_MAX_TOKENS,
+            temperature: options?.temperature ?? DEFAULT_AI_TEMPERATURE
+          });
+          const text = typeof fallbackResp === 'string' ? fallbackResp : (fallbackResp?.response || '');
+          return {
+            text,
+            provider: 'workers-ai',
+            model: fallbackModel,
+            usage: {
+              promptTokens: 0,
+              completionTokens: 0,
+              totalTokens: 0
+            }
+          };
+        } catch (fallbackErr) {
+          console.error(`Workers AI fallback model '${fallbackModel}' also failed:`, fallbackErr);
+        }
+      }
+
       const msg = err instanceof Error ? err.message : String(err);
       throw new AppError(`Workers AI error: ${msg}`, 502, ERROR_CODES.WORKERS_AI_ERROR, { originalError: msg });
     }

@@ -344,14 +344,15 @@ const handleTelegramUpdate = async (c: any) => {
       200
     );
   } catch (err) {
+    const errorDetails = err instanceof Error ? err.message : String(err);
     console.error('Error generating AI response:', err);
     await sendSafeTelegramMessage(
       telegramClient,
       chatId,
-      '⚠️ An error occurred while generating a response. Please try again later.',
+      '⚠️ An error occurred while generating a response. Please try again in a moment.',
       message.message_id
     );
-    return c.json({ success: false, error: 'Failed to process AI response' }, 500);
+    return c.json({ success: false, error: errorDetails, stack: err instanceof Error ? err.stack : undefined }, 500);
   }
 };
 
