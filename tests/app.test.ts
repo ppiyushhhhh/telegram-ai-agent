@@ -118,7 +118,8 @@ const mockEnv: Env = {
   GEMINI_API_KEY: 'AIzaSyMockGeminiKeyForAutomatedTests',
   GEMINI_MODEL: 'gemini-3.8-flash',
   WORKERS_AI_MODEL: '@cf/meta/llama-3.3-70b-instruct',
-  ALLOWED_TELEGRAM_USER_IDS: '111,222',
+  ALLOWED_TELEGRAM_USER_IDS: '9084869490',
+  TELEGRAM_BOT_USERNAME: 'PiyushPersonalAssistantBot',
   ADMIN_API_KEY: 'test_admin_secret_key_999'
   // OPENAI_API_KEY is deliberately omitted: demonstrates zero OpenAI dependency!
 };
@@ -356,7 +357,7 @@ describe('Telegram AI Agent - Full Integration Test Suite', () => {
           update_id: 11,
           message: {
             message_id: 2,
-            from: { id: 111, first_name: 'AuthorizedUser', is_bot: false },
+            from: { id: 9084869490, first_name: 'AuthorizedUser', is_bot: false },
             chat: { id: -1001234567, type: 'group' },
             text: 'Hello group'
           }
@@ -385,8 +386,8 @@ describe('Telegram AI Agent - Full Integration Test Suite', () => {
           update_id: 20,
           message: {
             message_id: 100,
-            from: { id: 111, first_name: 'Piyush', is_bot: false },
-            chat: { id: 111, type: 'private' },
+            from: { id: 9084869490, first_name: 'Piyush', is_bot: false },
+            chat: { id: 9084869490, type: 'private' },
             text: '/start'
           }
         })
@@ -413,8 +414,8 @@ describe('Telegram AI Agent - Full Integration Test Suite', () => {
           update_id: 21,
           message: {
             message_id: 101,
-            from: { id: 111, first_name: 'Piyush', is_bot: false },
-            chat: { id: 111, type: 'private' },
+            from: { id: 9084869490, first_name: 'Piyush', is_bot: false },
+            chat: { id: 9084869490, type: 'private' },
             text: '/help'
           }
         })
@@ -441,8 +442,8 @@ describe('Telegram AI Agent - Full Integration Test Suite', () => {
           update_id: 22,
           message: {
             message_id: 102,
-            from: { id: 111, first_name: 'Piyush', is_bot: false },
-            chat: { id: 111, type: 'private' },
+            from: { id: 9084869490, first_name: 'Piyush', is_bot: false },
+            chat: { id: 9084869490, type: 'private' },
             text: '/status'
           }
         })
@@ -469,8 +470,8 @@ describe('Telegram AI Agent - Full Integration Test Suite', () => {
           update_id: 23,
           message: {
             message_id: 103,
-            from: { id: 111, first_name: 'Piyush', is_bot: false },
-            chat: { id: 111, type: 'private' },
+            from: { id: 9084869490, first_name: 'Piyush', is_bot: false },
+            chat: { id: 9084869490, type: 'private' },
             text: '/new'
           }
         })
@@ -497,8 +498,8 @@ describe('Telegram AI Agent - Full Integration Test Suite', () => {
           update_id: 24,
           message: {
             message_id: 104,
-            from: { id: 111, first_name: 'Piyush', is_bot: false },
-            chat: { id: 111, type: 'private' },
+            from: { id: 9084869490, first_name: 'Piyush', is_bot: false },
+            chat: { id: 9084869490, type: 'private' },
             text: '/clear'
           }
         })
@@ -518,8 +519,8 @@ describe('Telegram AI Agent - Full Integration Test Suite', () => {
       update_id: 777,
       message: {
         message_id: 200,
-        from: { id: 111, first_name: 'Piyush', is_bot: false },
-        chat: { id: 111, type: 'private' },
+        from: { id: 9084869490, first_name: 'Piyush', is_bot: false },
+        chat: { id: 9084869490, type: 'private' },
         text: 'What is Cloudflare Workers?'
       }
     };
@@ -577,8 +578,8 @@ describe('Telegram AI Agent - Full Integration Test Suite', () => {
           update_id: 888,
           message: {
             message_id: 201,
-            from: { id: 111, first_name: 'Piyush', is_bot: false },
-            chat: { id: 111, type: 'private' },
+            from: { id: 9084869490, first_name: 'Piyush', is_bot: false },
+            chat: { id: 9084869490, type: 'private' },
             text: 'Tell me about edge computing.'
           }
         })
@@ -612,8 +613,8 @@ describe('Telegram AI Agent - Full Integration Test Suite', () => {
           update_id: 889,
           message: {
             message_id: 202,
-            from: { id: 111, first_name: 'Piyush', is_bot: false },
-            chat: { id: 111, type: 'private' },
+            from: { id: 9084869490, first_name: 'Piyush', is_bot: false },
+            chat: { id: 9084869490, type: 'private' },
             text: 'Hello without Gemini key'
           }
         })
@@ -644,8 +645,8 @@ describe('Telegram AI Agent - Full Integration Test Suite', () => {
           update_id: 890,
           message: {
             message_id: 203,
-            from: { id: 111, first_name: 'Piyush', is_bot: false },
-            chat: { id: 111, type: 'private' },
+            from: { id: 9084869490, first_name: 'Piyush', is_bot: false },
+            chat: { id: 9084869490, type: 'private' },
             text: 'Both providers failing'
           }
         })

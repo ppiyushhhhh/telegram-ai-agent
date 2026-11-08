@@ -317,6 +317,20 @@ export class DatabaseService {
   }
 
   /**
+   * Retrieves aggregate token and cost usage stats for all interactions.
+   */
+  public async getTotalUsageStats(): Promise<{ totalTokens: number; totalCostUsd: number }> {
+    const res = await this.db
+      .prepare('SELECT sum(total_tokens) as totalTokens, sum(estimated_cost_usd) as totalCostUsd FROM ai_usage')
+      .first<{ totalTokens: number | null; totalCostUsd: number | null }>();
+
+    return {
+      totalTokens: res?.totalTokens || 0,
+      totalCostUsd: Number((res?.totalCostUsd || 0).toFixed(6))
+    };
+  }
+
+  /**
    * Retrieves a dynamic system setting value by key.
    */
   public async getSystemSetting(key: string): Promise<string | null> {

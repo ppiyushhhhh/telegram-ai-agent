@@ -3,7 +3,7 @@ import type { Env, AppVariables } from '../types';
 import { adminAuthMiddleware } from '../middleware/admin-auth';
 import { DatabaseService } from '../services/db/client';
 import { TelegramClient } from '../services/telegram/client';
-import { APP_VERSION } from '../config/constants';
+import { APP_VERSION, DEFAULT_BOT_USERNAME } from '../config/constants';
 
 export const adminRouter = new Hono<{ Bindings: Env; Variables: AppVariables }>();
 
@@ -13,15 +13,20 @@ adminRouter.use('*', adminAuthMiddleware);
 // 1. Overview & System Statistics
 adminRouter.get('/overview', async (c) => {
   const dbService = c.env.DB ? new DatabaseService(c.env.DB) : null;
-  const stats = dbService
-    ? await dbService.getStats()
-    : {
-        totalUsers: 0,
-        allowedUsers: 0,
-        totalConversations: 0,
-        totalMessages: 0,
-        totalAuditLogs: 0
-      };
+  const [stats, usage] = await Promise.all([
+    dbService
+      ? dbService.getStats()
+      : {
+          totalUsers: 0,
+          allowedUsers: 0,
+          totalConversations: 0,
+          totalMessages: 0,
+          totalAuditLogs: 0
+        },
+    dbService
+      ? dbService.getTotalUsageStats()
+      : { totalTokens: 0, totalCostUsd: 0 }
+  ]);
 
   const primaryProvider = c.env.PRIMARY_AI_PROVIDER || 'gemini';
   const activeModel = primaryProvider === 'gemini'
@@ -30,13 +35,17 @@ adminRouter.get('/overview', async (c) => {
     ? (c.env.WORKERS_AI_MODEL || '@cf/meta/llama-3.3-70b-instruct')
     : (c.env.OPENAI_MODEL || 'gpt-4o-mini');
 
+  const botUsername = c.env.TELEGRAM_BOT_USERNAME || DEFAULT_BOT_USERNAME;
+
   return c.json({
     success: true,
     data: {
       version: APP_VERSION,
       environment: c.env.APP_ENV || 'development',
       primaryProvider,
+      botUsername,
       stats,
+      usage,
       model: activeModel,
       uptimeSeconds: Math.floor(performance.now() / 1000)
     }

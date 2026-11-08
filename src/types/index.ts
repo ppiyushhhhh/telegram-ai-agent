@@ -30,6 +30,7 @@ export interface Env {
   // Telegram Configuration
   TELEGRAM_BOT_TOKEN: string;
   TELEGRAM_WEBHOOK_SECRET: string;
+  TELEGRAM_BOT_USERNAME?: string;
   ALLOWED_TELEGRAM_USER_IDS?: string;
 
   // AI Provider Selection: 'gemini' (primary) | 'workers-ai' (secondary) | 'openai' (optional)
@@ -90,6 +91,7 @@ export interface HealthCheckData {
     };
     telegram: {
       status: 'configured' | 'missing_token' | 'missing_secret';
+      botUsername?: string;
     };
     aiProviders: {
       primary: 'gemini' | 'workers-ai' | 'openai';

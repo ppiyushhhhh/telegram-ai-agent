@@ -110,20 +110,20 @@ export const HealthMonitor: React.FC<HealthMonitorProps> = ({ health, overview }
         {/* Telegram Bot API */}
         <div className="card">
           <div className="card-title">
-            <span>Telegram Webhook</span>
+            <span>Telegram Bot (@{health?.checks.telegram.botUsername || overview?.botUsername || 'PiyushPersonalAssistantBot'})</span>
             <Send size={18} color="var(--accent-blue)" />
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '6px' }}>
             <span
               className={`badge ${
-                health?.checks.telegram.status === 'configured' ? 'badge-green' : 'badge-amber'
+                health?.checks.telegram.status === 'configured' ? 'badge-green' : 'badge-red'
               }`}
             >
-              {health?.checks.telegram.status === 'configured' ? 'SECURED' : 'UNCONFIGURED'}
+              {health?.checks.telegram.status === 'configured' ? 'CONNECTED / SECURED' : 'NOT CONFIGURED'}
             </span>
           </div>
           <div className="card-subtitle">
-            Protected with secret token header verification
+            Protected via secret token &bull; Authorized Telegram ID: 9084869490
           </div>
         </div>
       </div>
@@ -150,6 +150,17 @@ export const HealthMonitor: React.FC<HealthMonitorProps> = ({ health, overview }
             <div className="card-value">{overview.stats.totalConversations}</div>
             <div className="card-subtitle">
               {overview.stats.totalMessages} total message exchanges
+            </div>
+          </div>
+
+          <div className="card" style={{ padding: '16px 20px' }}>
+            <div className="card-title">
+              <span>AI Token Usage &amp; Cost</span>
+              <Cpu size={16} />
+            </div>
+            <div className="card-value">{overview.usage?.totalTokens?.toLocaleString() || 0} tokens</div>
+            <div className="card-subtitle">
+              ${(overview.usage?.totalCostUsd || 0).toFixed(5)} total API cost
             </div>
           </div>
 

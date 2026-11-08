@@ -1,6 +1,8 @@
 export interface SystemOverview {
   version: string;
   environment: string;
+  primaryProvider: string;
+  botUsername?: string;
   model: string;
   uptimeSeconds: number;
   stats: {
@@ -9,6 +11,10 @@ export interface SystemOverview {
     totalConversations: number;
     totalMessages: number;
     totalAuditLogs: number;
+  };
+  usage?: {
+    totalTokens: number;
+    totalCostUsd: number;
   };
 }
 
@@ -20,7 +26,7 @@ export interface HealthStatus {
   uptimeSeconds: number;
   checks: {
     database: { status: 'ok' | 'failed' | 'not_configured'; latencyMs?: number; message?: string };
-    telegram: { status: 'configured' | 'missing_token' | 'missing_secret' };
+    telegram: { status: 'configured' | 'missing_token' | 'missing_secret'; botUsername?: string };
     aiProviders: {
       primary: 'gemini' | 'workers-ai' | 'openai';
       gemini: { status: 'configured' | 'not_configured'; model: string };

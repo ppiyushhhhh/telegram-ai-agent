@@ -5,7 +5,8 @@ import {
   DEFAULT_PRIMARY_PROVIDER,
   DEFAULT_GEMINI_MODEL,
   DEFAULT_WORKERS_AI_MODEL,
-  DEFAULT_OPENAI_MODEL
+  DEFAULT_OPENAI_MODEL,
+  DEFAULT_BOT_USERNAME
 } from '../config/constants';
 
 export const healthRouter = new Hono<{ Bindings: Env; Variables: AppVariables }>();
@@ -91,7 +92,8 @@ healthRouter.get('/', async (c) => {
         ...(dbMessage ? { message: dbMessage } : {})
       },
       telegram: {
-        status: telegramStatus
+        status: telegramStatus,
+        botUsername: c.env.TELEGRAM_BOT_USERNAME || DEFAULT_BOT_USERNAME
       },
       aiProviders: {
         primary: primaryProvider,
