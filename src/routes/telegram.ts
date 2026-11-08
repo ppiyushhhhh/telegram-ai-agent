@@ -16,6 +16,7 @@ import {
   EMBEDDING_DIMENSIONS
 } from '../config/constants';
 import { parseReminderInput } from '../services/scheduler/reminder-parser';
+import { executeAutoTool, fetchLiveWeather, fetchLiveWebSearch } from '../services/tools';
 
 export const telegramRouter = new Hono<{ Bindings: Env; Variables: AppVariables }>();
 
@@ -67,15 +68,21 @@ const handleTelegramUpdate = async (c: any) => {
 
   // We primarily handle message updates
   const message = update.message;
-  if (!message || !message.text) {
-    // Acknowledge non-text updates (e.g. status changes, edited messages) with 200 OK
-    return c.json({ success: true, message: 'Non-text update ignored' }, 200);
+  if (!message) {
+    return c.json({ success: true, message: 'Non-message update ignored' }, 200);
+  }
+
+  const isVoice = Boolean(message.voice || message.audio);
+  const isPhoto = Boolean(message.photo && message.photo.length > 0);
+  let text = (message.text || message.caption || '').trim();
+
+  if (!text && !isVoice && !isPhoto) {
+    return c.json({ success: true, message: 'Unsupported message format ignored' }, 200);
   }
 
   const sender = message.from;
   const chat = message.chat;
   const chatId = chat.id;
-  const text = message.text.trim();
 
   // 2. Private Chat Enforcement
   if (chat.type !== 'private') {
@@ -127,18 +134,125 @@ const handleTelegramUpdate = async (c: any) => {
     return c.json({ success: true, message: 'Unauthorized user notified' }, 200);
   }
 
+  // Handle Incoming Photo / Image Messages (Cloudflare Workers AI Vision)
+  if (isPhoto) {
+    runBackgroundTask(telegramClient.sendChatAction(chatId, 'upload_photo'));
+    try {
+      const photos = message.photo!;
+      const largestPhoto = photos[photos.length - 1];
+      const fileInfo = await telegramClient.getFile(largestPhoto.file_id);
+      if (!fileInfo.file_path) {
+        throw new Error('Telegram did not return file_path for photo');
+      }
+      const buffer = await telegramClient.downloadFile(fileInfo.file_path);
+      const prompt = text || 'Describe what you see in this image in detail and extract any text or important elements.';
+      const aiService = new UnifiedAIService(c.env);
+      const memoryService = new SemanticMemoryService(c.env, aiService);
+      const analysis = await aiService.describeImage(new Uint8Array(buffer), prompt);
+
+      await sendSafeTelegramMessage(
+        telegramClient,
+        chatId,
+        `📸 *Image Analysis:*\n\n${analysis}`,
+        message.message_id
+      );
+
+      if (dbService) {
+        const conv = await dbService.getOrCreateConversation(
+          chatId,
+          sender.id,
+          c.env.WORKERS_AI_MODEL || DEFAULT_WORKERS_AI_MODEL
+        );
+        await dbService.saveMessage({
+          conversationId: conv.id,
+          telegramMessageId: message.message_id,
+          role: 'user',
+          content: `[Photo: ${prompt}]`
+        });
+        await dbService.saveMessage({
+          conversationId: conv.id,
+          role: 'assistant',
+          content: analysis
+        });
+        if (memoryService.isVectorizeReady()) {
+          await memoryService.storeMemory(
+            sender.id,
+            `User sent an image (${prompt}). AI Visual Analysis: "${analysis.slice(0, 250)}"`
+          );
+        }
+      }
+      return c.json({ success: true, message: 'Handled photo message' }, 200);
+    } catch (photoErr) {
+      console.error('Error processing photo message:', photoErr);
+      await sendSafeTelegramMessage(
+        telegramClient,
+        chatId,
+        '⚠️ Failed to process image. Please try sending a different photo.',
+        message.message_id
+      );
+      return c.json({ success: false, error: 'Photo processing error' }, 500);
+    }
+  }
+
+  // Handle Incoming Voice / Audio Messages (Cloudflare Workers AI Whisper)
+  let isVoiceNote = false;
+  if (isVoice) {
+    runBackgroundTask(telegramClient.sendChatAction(chatId, 'typing'));
+    try {
+      const voice = message.voice || message.audio;
+      const fileInfo = await telegramClient.getFile(voice!.file_id);
+      if (!fileInfo.file_path) {
+        throw new Error('Telegram did not return file_path for voice note');
+      }
+      const buffer = await telegramClient.downloadFile(fileInfo.file_path);
+      const aiService = new UnifiedAIService(c.env);
+      const transcription = await aiService.transcribeAudio(new Uint8Array(buffer));
+      if (!transcription || transcription.trim().length === 0) {
+        await sendSafeTelegramMessage(
+          telegramClient,
+          chatId,
+          '⚠️ Could not transcribe audio. Please try speaking closer to the microphone.',
+          message.message_id
+        );
+        return c.json({ success: true, message: 'Empty voice transcription' }, 200);
+      }
+      text = transcription.trim();
+      isVoiceNote = true;
+    } catch (voiceErr) {
+      console.error('Error processing voice message:', voiceErr);
+      await sendSafeTelegramMessage(
+        telegramClient,
+        chatId,
+        '⚠️ Failed to transcribe audio note. Please try again or send a text message.',
+        message.message_id
+      );
+      return c.json({ success: false, error: 'Voice transcription error' }, 500);
+    }
+  }
+
   // 4. Command Handling
   // /start command
   if (text === '/start') {
     const welcomeText =
       `👋 *Hello ${sender.first_name || 'there'}!*\n\n` +
       `I am your private AI Agent running on Cloudflare Workers and powered entirely by Cloudflare Workers AI.\n\n` +
+      `*Features:*\n` +
+      `• 💬 Conversational chat with Meta LLaMA 3.3 70B\n` +
+      `• 🎙️ Voice note transcription via Workers AI Whisper\n` +
+      `• 📸 Image understanding via Workers AI Vision\n` +
+      `• ⏰ Scheduled proactive reminders via Cron Triggers\n` +
+      `• 🌤️ Live weather forecasts & 🔍 Web search\n\n` +
       `*Commands:*\n` +
       `• \`/help\` - View commands and help guide\n` +
+      `• \`/weather <city>\` - Real-time weather observation\n` +
+      `• \`/search <query>\` - Live web & encyclopedia search\n` +
+      `• \`/remind <time> <text>\` - Schedule a proactive reminder\n` +
+      `• \`/reminders\` - View pending reminders\n` +
+      `• \`/clearreminders\` - Cancel all reminders\n` +
       `• \`/status\` - View system status, active model & usage\n` +
       `• \`/new\` - Start a brand new conversation session\n` +
       `• \`/clear\` - Clear current conversation context\n\n` +
-      `Send any message to begin!`;
+      `Send any message, voice note, or photo to begin!`;
 
     await sendSafeTelegramMessage(telegramClient, chatId, welcomeText, message.message_id);
     return c.json({ success: true, message: 'Handled /start' }, 200);
@@ -151,19 +265,57 @@ const handleTelegramUpdate = async (c: any) => {
       `• \`/start\` - Welcome screen and agent introduction\n` +
       `• \`/help\` - View this command guide\n` +
       `• \`/status\` - View active AI model, latency & token stats\n` +
-      `• \`/new\` - Start a fresh conversation topic\n` +
-      `• \`/clear\` - Clear context for current chat session\n` +
-      `• \`/remind <time> <text>\` - Set a scheduled proactive reminder\n` +
+      `• \`/weather <city>\` - Live weather forecasts (e.g. \`/weather Tokyo\`)\n` +
+      `• \`/search <query>\` - Web search (e.g. \`/search Cloudflare Workers\`)\n` +
+      `• \`/remind <time> <text>\` - Set a proactive reminder (e.g. \`/remind in 15m check oven\`)\n` +
       `• \`/reminders\` - View all active scheduled reminders\n` +
-      `• \`/clearreminders\` - Cancel all active scheduled reminders\n\n` +
-      `*Tips:*\n` +
-      `• Powered by Cloudflare Workers AI with zero external dependencies.\n` +
-      `• Proactive reminders: e.g. "remind me to renew Netflix at 3 pm" or "/remind in 15m check oven".\n` +
-      `• Conversation context is maintained automatically in D1.\n` +
-      `• Long responses are cleanly split to comply with Telegram message limits.`;
+      `• \`/clearreminders\` - Cancel all active scheduled reminders\n` +
+      `• \`/new\` - Start a fresh conversation topic\n` +
+      `• \`/clear\` - Clear context for current chat session\n\n` +
+      `*Capabilities:*\n` +
+      `• 🎙️ *Voice Notes:* Send audio/voice messages to transcribe and chat.\n` +
+      `• 📸 *Image Understanding:* Send photos or documents to analyze.\n` +
+      `• 🧠 *Long-term Memory:* Important context stored in Vectorize.\n` +
+      `• ⚡ *Edge-Native:* Exclusively powered by Cloudflare Workers AI.`;
 
     await sendSafeTelegramMessage(telegramClient, chatId, helpText, message.message_id);
     return c.json({ success: true, message: 'Handled /help' }, 200);
+  }
+
+  // /weather command
+  if (text.startsWith('/weather')) {
+    const loc = text.replace(/^\/weather\s*/i, '').trim();
+    if (!loc) {
+      await sendSafeTelegramMessage(
+        telegramClient,
+        chatId,
+        '🌤️ *Usage:* `/weather <city>`\n\nExample: `/weather Tokyo` or `/weather London`',
+        message.message_id
+      );
+      return c.json({ success: true, message: 'Handled /weather usage' }, 200);
+    }
+    runBackgroundTask(telegramClient.sendChatAction(chatId, 'typing'));
+    const weatherResult = await fetchLiveWeather(loc);
+    await sendSafeTelegramMessage(telegramClient, chatId, weatherResult, message.message_id);
+    return c.json({ success: true, message: 'Handled /weather' }, 200);
+  }
+
+  // /search command
+  if (text.startsWith('/search')) {
+    const query = text.replace(/^\/search\s*/i, '').trim();
+    if (!query) {
+      await sendSafeTelegramMessage(
+        telegramClient,
+        chatId,
+        '🔍 *Usage:* `/search <query>`\n\nExample: `/search Cloudflare Workers AI` or `/search Alan Turing`',
+        message.message_id
+      );
+      return c.json({ success: true, message: 'Handled /search usage' }, 200);
+    }
+    runBackgroundTask(telegramClient.sendChatAction(chatId, 'typing'));
+    const searchResult = await fetchLiveWebSearch(query);
+    await sendSafeTelegramMessage(telegramClient, chatId, searchResult, message.message_id);
+    return c.json({ success: true, message: 'Handled /search' }, 200);
   }
 
   // /status command (and /stats, /model aliases)
@@ -346,6 +498,16 @@ const handleTelegramUpdate = async (c: any) => {
       console.warn('Semantic memory query skipped:', memErr);
     }
 
+    // Auto Tool Execution: check if user asks about weather or web search naturally
+    try {
+      const autoTool = await executeAutoTool(text);
+      if (autoTool.output) {
+        systemInstruction += `\n\nLive real-time edge tool data retrieved for this inquiry:\n${autoTool.output}`;
+      }
+    } catch (toolErr) {
+      console.warn('Auto tool execution skipped:', toolErr);
+    }
+
     const chatHistory: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [
       {
         role: 'system',
@@ -376,8 +538,9 @@ const handleTelegramUpdate = async (c: any) => {
       maxTokens: c.env.MAX_TOKENS ? parseInt(c.env.MAX_TOKENS, 10) : 1000
     });
 
-    // Send reply back to Telegram safely
-    await sendSafeTelegramMessage(telegramClient, chatId, aiResult.text, message.message_id);
+    // Send reply back to Telegram safely (prefix transcribed text if received as voice note)
+    const finalReply = isVoiceNote ? `🎙️ _"${text}"_\n\n${aiResult.text}` : aiResult.text;
+    await sendSafeTelegramMessage(telegramClient, chatId, finalReply, message.message_id);
 
     // Track token usage and estimated cost
     const promptTokens = aiResult.usage?.promptTokens || 0;

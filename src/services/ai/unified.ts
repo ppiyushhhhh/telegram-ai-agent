@@ -121,4 +121,68 @@ export class UnifiedAIService {
       );
     }
   }
+
+  /**
+   * Transcribes voice/audio recordings using Cloudflare Workers AI Whisper (@cf/openai/whisper).
+   */
+  public async transcribeAudio(audioBytes: Uint8Array): Promise<string> {
+    if (!this.workersAi.isConfigured()) {
+      throw new AppError(
+        'Cloudflare Workers AI binding (env.AI) is not configured for Whisper audio transcription.',
+        500,
+        ERROR_CODES.INVALID_CONFIG
+      );
+    }
+
+    try {
+      const result = await Promise.race([
+        this.workersAi.transcribeAudio(audioBytes),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error('Timeout after 30s for Workers AI Whisper transcription')), 30000)
+        )
+      ]);
+
+      return result;
+    } catch (err) {
+      const errorMsg = err instanceof Error ? err.message : String(err);
+      throw new AppError(
+        `Workers AI audio transcription failed: ${errorMsg}`,
+        502,
+        ERROR_CODES.WORKERS_AI_ERROR,
+        { originalError: errorMsg }
+      );
+    }
+  }
+
+  /**
+   * Understands and describes images using Cloudflare Workers AI Vision (@cf/meta/llama-3.2-11b-vision-instruct).
+   */
+  public async describeImage(imageBytes: Uint8Array, prompt?: string): Promise<string> {
+    if (!this.workersAi.isConfigured()) {
+      throw new AppError(
+        'Cloudflare Workers AI binding (env.AI) is not configured for Vision model.',
+        500,
+        ERROR_CODES.INVALID_CONFIG
+      );
+    }
+
+    try {
+      const result = await Promise.race([
+        this.workersAi.describeImage(imageBytes, prompt),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error('Timeout after 30s for Workers AI Vision analysis')), 30000)
+        )
+      ]);
+
+      return result;
+    } catch (err) {
+      const errorMsg = err instanceof Error ? err.message : String(err);
+      throw new AppError(
+        `Workers AI image analysis failed: ${errorMsg}`,
+        502,
+        ERROR_CODES.WORKERS_AI_ERROR,
+        { originalError: errorMsg }
+      );
+    }
+  }
 }

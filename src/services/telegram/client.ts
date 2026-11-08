@@ -8,12 +8,14 @@ import { ERROR_CODES } from '../../config/constants';
 
 export class TelegramClient {
   private readonly baseUrl: string;
+  private readonly botToken: string;
 
   constructor(botToken: string) {
     const cleanToken = botToken?.trim();
     if (!cleanToken) {
       throw new AppError('Telegram Bot Token is required', 500, ERROR_CODES.INVALID_CONFIG);
     }
+    this.botToken = cleanToken;
     this.baseUrl = `https://api.telegram.org/bot${cleanToken}`;
   }
 
@@ -58,5 +60,24 @@ export class TelegramClient {
 
   public async getMe(): Promise<unknown> {
     return this.call<unknown>('getMe');
+  }
+
+  public async getFile(fileId: string): Promise<{ file_id: string; file_unique_id: string; file_size?: number; file_path?: string }> {
+    return this.call<{ file_id: string; file_unique_id: string; file_size?: number; file_path?: string }>('getFile', {
+      file_id: fileId
+    });
+  }
+
+  public async downloadFile(filePath: string): Promise<ArrayBuffer> {
+    const fileUrl = `https://api.telegram.org/file/bot${this.botToken}/${filePath}`;
+    const res = await fetch(fileUrl);
+    if (!res.ok) {
+      throw new AppError(
+        `Failed to download file from Telegram: ${res.statusText}`,
+        res.status >= 400 && res.status < 500 ? 400 : 502,
+        ERROR_CODES.TELEGRAM_API_ERROR
+      );
+    }
+    return res.arrayBuffer();
   }
 }

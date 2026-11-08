@@ -117,5 +117,53 @@ export class WorkersAIProvider implements IAIProvider {
       throw new AppError(`Workers AI Embedding error: ${msg}`, 502, ERROR_CODES.WORKERS_AI_ERROR, { originalError: msg });
     }
   }
+
+  /**
+   * Transcribes audio/voice note bytes using Cloudflare Workers AI Whisper (@cf/openai/whisper).
+   */
+  public async transcribeAudio(audioBytes: Uint8Array): Promise<string> {
+    if (!this.isConfigured()) {
+      throw new AppError(
+        'Cloudflare Workers AI binding (env.AI) is not configured',
+        500,
+        ERROR_CODES.INVALID_CONFIG
+      );
+    }
+
+    try {
+      const response = await this.aiBinding.run('@cf/openai/whisper', {
+        audio: [...audioBytes]
+      });
+      return typeof response === 'string' ? response : (response?.text || '');
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      throw new AppError(`Workers AI Whisper error: ${msg}`, 502, ERROR_CODES.WORKERS_AI_ERROR, { originalError: msg });
+    }
+  }
+
+  /**
+   * Analyzes an image and answers questions using Cloudflare Workers AI Vision (@cf/meta/llama-3.2-11b-vision-instruct).
+   */
+  public async describeImage(imageBytes: Uint8Array, prompt?: string): Promise<string> {
+    if (!this.isConfigured()) {
+      throw new AppError(
+        'Cloudflare Workers AI binding (env.AI) is not configured',
+        500,
+        ERROR_CODES.INVALID_CONFIG
+      );
+    }
+
+    try {
+      const response = await this.aiBinding.run('@cf/meta/llama-3.2-11b-vision-instruct', {
+        image: [...imageBytes],
+        prompt: prompt || 'Describe this image in detail and extract any visible text or notable elements.',
+        max_tokens: 1000
+      });
+      return typeof response === 'string' ? response : (response?.response || '');
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      throw new AppError(`Workers AI Vision error: ${msg}`, 502, ERROR_CODES.WORKERS_AI_ERROR, { originalError: msg });
+    }
+  }
 }
 

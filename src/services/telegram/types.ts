@@ -20,6 +20,40 @@ export interface TelegramChat {
   last_name?: string;
 }
 
+export interface TelegramPhotoSize {
+  file_id: string;
+  file_unique_id: string;
+  width: number;
+  height: number;
+  file_size?: number;
+}
+
+export interface TelegramVoice {
+  file_id: string;
+  file_unique_id: string;
+  duration: number;
+  mime_type?: string;
+  file_size?: number;
+}
+
+export interface TelegramAudio {
+  file_id: string;
+  file_unique_id: string;
+  duration: number;
+  performer?: string;
+  title?: string;
+  mime_type?: string;
+  file_size?: number;
+}
+
+export interface TelegramDocument {
+  file_id: string;
+  file_unique_id: string;
+  file_name?: string;
+  mime_type?: string;
+  file_size?: number;
+}
+
 export interface TelegramMessage {
   message_id: number;
   from?: TelegramUser;
@@ -29,6 +63,10 @@ export interface TelegramMessage {
   text?: string;
   caption?: string;
   reply_to_message?: TelegramMessage;
+  voice?: TelegramVoice;
+  audio?: TelegramAudio;
+  photo?: TelegramPhotoSize[];
+  document?: TelegramDocument;
 }
 
 export interface TelegramUpdate {

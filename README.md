@@ -281,6 +281,16 @@ Audits token usage and estimated compute cost:
 * `prompt_tokens`, `completion_tokens`, `total_tokens`: Token metrics.
 * `estimated_cost_usd` (`REAL NOT NULL`): Computed cost based on Workers AI Neurons pricing.
 
+#### `reminders` Table
+Manages scheduled proactive reminders processed by Cloudflare Cron Triggers:
+* `id` (`TEXT PRIMARY KEY`): Unique reminder ID.
+* `user_id` (`INTEGER NOT NULL`): Telegram user ID.
+* `chat_id` (`INTEGER NOT NULL`): Target chat ID for notification delivery.
+* `reminder_text` (`TEXT NOT NULL`): The reminder task or note.
+* `remind_at` (`TEXT NOT NULL`): ISO timestamp when the reminder becomes due.
+* `is_sent` (`INTEGER DEFAULT 0`): `0` for pending, `1` when dispatched.
+* `created_at` / `sent_at`: ISO timestamps.
+
 #### `system_settings` Table
 Dynamic key-value settings table loaded at runtime to adjust behavior without redeploying:
 * `key` (`TEXT PRIMARY KEY`): Setting identifier.

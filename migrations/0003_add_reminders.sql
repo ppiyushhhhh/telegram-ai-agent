@@ -13,3 +13,4 @@ CREATE TABLE IF NOT EXISTS reminders (
 
 CREATE INDEX IF NOT EXISTS idx_reminders_pending ON reminders(is_sent, remind_at);
 CREATE INDEX IF NOT EXISTS idx_reminders_user ON reminders(user_id);
+
