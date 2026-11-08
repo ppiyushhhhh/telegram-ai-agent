@@ -86,12 +86,21 @@ export async function sendSafeTelegramMessage(
       });
     } catch (err) {
       console.warn('Failed to send with Markdown parse mode, attempting plain text fallback:', err);
-      // Fallback: send as plain text without parse_mode
-      await client.sendMessage({
-        chat_id: chatId,
-        text: chunk,
-        reply_to_message_id: replyId
-      });
+      try {
+        // Fallback 1: send as plain text without parse_mode
+        await client.sendMessage({
+          chat_id: chatId,
+          text: chunk,
+          reply_to_message_id: replyId
+        });
+      } catch (err2) {
+        console.warn('Failed with reply_to_message_id, attempting direct send without reply:', err2);
+        // Fallback 2: send without reply_to_message_id in case the original message was deleted/not found
+        await client.sendMessage({
+          chat_id: chatId,
+          text: chunk
+        });
+      }
     }
   }
 }
