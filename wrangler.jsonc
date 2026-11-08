@@ -90,6 +90,12 @@
           }
         ]
       },
+      "vectorize": [
+        {
+          "binding": "VECTOR_INDEX",
+          "index_name": "telegram-ai-agent-vector-uat"
+        }
+      ],
       "migrations": [
         {
           "tag": "v1",
