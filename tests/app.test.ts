@@ -674,4 +674,48 @@ describe('Telegram AI Agent - Workers AI Integration Test Suite', () => {
     assert.equal(body.success, true);
     assert.equal(body.webhookUrl, 'https://telegram-ai-agent-uat.workers.dev/webhooks/telegram');
   });
+
+  // 15. Durable Objects Concurrency Locking
+  it('POST /webhooks/telegram should throttle concurrent requests when Durable Object lock is active', async () => {
+    const mockSessionDoNamespace: any = {
+      idFromName: (name: string) => ({ toString: () => name }),
+      get: () => ({
+        acquireLock: async () => false, // Simulate lock collision (already processing)
+        releaseLock: async () => {},
+        appendEphemeralMessage: async () => {},
+        clearSession: async () => {}
+      })
+    };
+
+    const envWithDo: Env = {
+      ...mockEnv,
+      SESSION_DO: mockSessionDoNamespace
+    };
+
+    const res = await app.request(
+      '/webhooks/telegram',
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-telegram-bot-api-secret-token': 'test_webhook_secret_key_123'
+        },
+        body: JSON.stringify({
+          update_id: 991,
+          message: {
+            message_id: 301,
+            from: { id: 9084869490, first_name: 'Piyush', is_bot: false },
+            chat: { id: 9084869490, type: 'private' },
+            text: 'Rapid-fire second message'
+          }
+        })
+      },
+      envWithDo
+    );
+
+    assert.equal(res.status, 200);
+    const body = await res.json<{ success: boolean; message: string }>();
+    assert.equal(body.success, true);
+    assert.match(body.message, /Concurrent request throttled/);
+  });
 });

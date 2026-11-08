@@ -213,6 +213,15 @@ const handleTelegramUpdate = async (c: any) => {
     if (dbService) {
       await dbService.resetConversation(chatId);
     }
+    if (c.env.SESSION_DO) {
+      try {
+        const doId = c.env.SESSION_DO.idFromName(`chat_${chatId}`);
+        const sessionDO = c.env.SESSION_DO.get(doId) as any;
+        await sessionDO.clearSession();
+      } catch (doErr) {
+        console.warn('Session Durable Object clearSession skipped:', doErr);
+      }
+    }
     await sendSafeTelegramMessage(
       telegramClient,
       chatId,
@@ -225,7 +234,27 @@ const handleTelegramUpdate = async (c: any) => {
   // 5. Send typing indicator while processing AI query
   runBackgroundTask(telegramClient.sendChatAction(chatId, 'typing'));
 
-  // 6. Text Message Handling & AI Execution
+  // 6. Text Message Handling & AI Execution with Durable Object Concurrency Locking
+  let sessionDO: any = null;
+  if (c.env.SESSION_DO) {
+    try {
+      const doId = c.env.SESSION_DO.idFromName(`chat_${chatId}`);
+      sessionDO = c.env.SESSION_DO.get(doId);
+      const lockAcquired = await sessionDO.acquireLock(chatId, sender.id);
+      if (!lockAcquired) {
+        await sendSafeTelegramMessage(
+          telegramClient,
+          chatId,
+          '⏳ *Please wait a moment*\nI am still processing your previous message. Your next reply will begin shortly.',
+          message.message_id
+        );
+        return c.json({ success: true, message: 'Concurrent request throttled by Durable Object' }, 200);
+      }
+    } catch (doErr) {
+      console.warn('Session Durable Object lock acquisition skipped:', doErr);
+    }
+  }
+
   try {
     const aiService = new UnifiedAIService(c.env);
     const memoryService = new SemanticMemoryService(c.env, aiService);
@@ -321,6 +350,12 @@ const handleTelegramUpdate = async (c: any) => {
                 `User asked: "${text}" | Assistant replied: "${aiResult.text.slice(0, 300)}"`
               );
             }
+
+            // Sync ephemeral context into Durable Object buffer
+            if (sessionDO) {
+              await sessionDO.appendEphemeralMessage('user', text);
+              await sessionDO.appendEphemeralMessage('assistant', aiResult.text);
+            }
           } catch (e) {
             console.error('Failed to save message or record usage in D1:', e);
           }
@@ -347,6 +382,14 @@ const handleTelegramUpdate = async (c: any) => {
       message.message_id
     );
     return c.json({ success: false, error: errorDetails, stack: err instanceof Error ? err.stack : undefined }, 500);
+  } finally {
+    if (sessionDO) {
+      try {
+        await sessionDO.releaseLock();
+      } catch (releaseErr) {
+        console.warn('Session Durable Object releaseLock skipped:', releaseErr);
+      }
+    }
   }
 };
 
