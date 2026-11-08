@@ -725,4 +725,38 @@ describe('Telegram AI Agent - Full Integration Test Suite', () => {
     assert.equal(body.data.primaryProvider, 'gemini');
     assert.equal(body.data.model, 'gemini-3.8-flash');
   });
+
+  // 13. Telegram Webhook Admin Management
+  it('GET /api/admin/telegram/webhook-info should return webhook info with valid x-admin-key', async () => {
+    const res = await app.request(
+      '/api/admin/telegram/webhook-info',
+      {
+        method: 'GET',
+        headers: { 'x-admin-key': 'test_admin_secret_key_999' }
+      },
+      mockEnv
+    );
+    assert.equal(res.status, 200);
+    const body = await res.json<{ success: boolean; data: any }>();
+    assert.equal(body.success, true);
+  });
+
+  it('POST /api/admin/telegram/set-webhook should register Telegram webhook securely', async () => {
+    const res = await app.request(
+      '/api/admin/telegram/set-webhook',
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-admin-key': 'test_admin_secret_key_999'
+        },
+        body: JSON.stringify({ url: 'https://telegram-ai-agent-uat.workers.dev' })
+      },
+      mockEnv
+    );
+    assert.equal(res.status, 200);
+    const body = await res.json<{ success: boolean; webhookUrl: string }>();
+    assert.equal(body.success, true);
+    assert.equal(body.webhookUrl, 'https://telegram-ai-agent-uat.workers.dev/webhooks/telegram');
+  });
 });

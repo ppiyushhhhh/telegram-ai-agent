@@ -137,6 +137,17 @@ export class DashboardApiClient {
   public async getLogs(): Promise<AdminAuditLog[]> {
     return this.request<AdminAuditLog[]>('/api/admin/logs');
   }
+
+  public async getTelegramWebhookInfo(): Promise<unknown> {
+    return this.request<unknown>('/api/admin/telegram/webhook-info');
+  }
+
+  public async setTelegramWebhook(url: string): Promise<{ success: boolean; message: string; webhookUrl: string }> {
+    return this.request('/api/admin/telegram/set-webhook', {
+      method: 'POST',
+      body: JSON.stringify({ url })
+    });
+  }
 }
 
 export const api = new DashboardApiClient();

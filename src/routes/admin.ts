@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import type { Env, AppVariables } from '../types';
 import { adminAuthMiddleware } from '../middleware/admin-auth';
 import { DatabaseService } from '../services/db/client';
+import { TelegramClient } from '../services/telegram/client';
 import { APP_VERSION } from '../config/constants';
 
 export const adminRouter = new Hono<{ Bindings: Env; Variables: AppVariables }>();
@@ -134,4 +135,33 @@ adminRouter.get('/config', (c) => {
       rateLimit: c.env.RATE_LIMIT_PER_MINUTE ? parseInt(c.env.RATE_LIMIT_PER_MINUTE, 10) : 30
     }
   });
+});
+
+// 6. Telegram Webhook Management (Protected Admin Endpoints)
+adminRouter.get('/telegram/webhook-info', async (c) => {
+  if (!c.env.TELEGRAM_BOT_TOKEN) {
+    return c.json({ success: false, error: 'TELEGRAM_BOT_TOKEN is not configured' }, 400);
+  }
+  const telegramClient = new TelegramClient(c.env.TELEGRAM_BOT_TOKEN);
+  const info = await telegramClient.getWebhookInfo();
+  return c.json({ success: true, data: info });
+});
+
+adminRouter.post('/telegram/set-webhook', async (c) => {
+  if (!c.env.TELEGRAM_BOT_TOKEN || !c.env.TELEGRAM_WEBHOOK_SECRET) {
+    return c.json({ success: false, error: 'Telegram bot token or webhook secret is not configured' }, 400);
+  }
+  const body = (await c.req.json().catch(() => ({}))) as { url?: string };
+  const url = body.url;
+  if (!url || !url.startsWith('https://')) {
+    return c.json({ success: false, error: 'A valid HTTPS worker URL is required to register the Telegram webhook' }, 400);
+  }
+  const webhookUrl = `${url.replace(/\/$/, '')}/webhooks/telegram`;
+  const telegramClient = new TelegramClient(c.env.TELEGRAM_BOT_TOKEN);
+  const result = await telegramClient.setWebhook({
+    url: webhookUrl,
+    secret_token: c.env.TELEGRAM_WEBHOOK_SECRET,
+    allowed_updates: ['message']
+  });
+  return c.json({ success: true, message: 'Telegram webhook configured successfully', webhookUrl, result });
 });
