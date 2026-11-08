@@ -34,38 +34,68 @@ export const AiMemorySettings: React.FC<AiMemorySettingsProps> = ({ health }) =>
       {/* AI Providers Overview */}
       <div className="card">
         <div style={{ marginBottom: '16px' }}>
-          <h2 style={{ fontSize: '1.125rem', fontWeight: 600 }}>Dual AI Providers Architecture</h2>
+          <h2 style={{ fontSize: '1.125rem', fontWeight: 600 }}>Triple AI Provider Architecture &amp; Fallback</h2>
           <p style={{ fontSize: '0.8125rem', color: 'var(--text-muted)' }}>
-            High-availability AI engine with automated failover from OpenAI to Gemini.
+            Primary Google Gemini engine with edge-native Cloudflare Workers AI failover and optional OpenAI support.
           </p>
         </div>
 
         <div className="grid-cards">
-          {/* OpenAI Primary */}
+          {/* Gemini Primary */}
           <div
             style={{
               padding: '16px',
               borderRadius: 'var(--radius-sm)',
               background: 'var(--bg-card)',
-              border: ai?.primary === 'openai' ? '1px solid var(--accent-blue)' : '1px solid var(--border-color)'
+              border: ai?.primary === 'gemini' ? '1px solid var(--accent-purple)' : '1px solid var(--border-color)'
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Zap size={18} color="var(--accent-purple)" />
+                <span style={{ fontWeight: 600 }}>Gemini (Primary)</span>
+              </div>
+              <span className={`badge ${ai?.gemini.status === 'configured' ? 'badge-green' : 'badge-red'}`}>
+                {ai?.gemini.status === 'configured' ? 'ACTIVE' : 'MISSING GEMINI_API_KEY'}
+              </span>
+            </div>
+            <div style={{ marginTop: '12px', fontSize: '0.8125rem', color: 'var(--text-secondary)' }}>
+              <div>Model: <code>{ai?.gemini.model || 'gemini-3.8-flash'}</code></div>
+              <div style={{ marginTop: '4px' }}>Role: Primary conversational generation &amp; semantic embeddings (gemini-embedding-2)</div>
+              <div style={{ marginTop: '4px', color: 'var(--text-muted)', fontSize: '0.75rem' }}>
+                Quota: Standard Gemini Developer API limits
+              </div>
+            </div>
+          </div>
+
+          {/* Cloudflare Workers AI Secondary */}
+          <div
+            style={{
+              padding: '16px',
+              borderRadius: 'var(--radius-sm)',
+              background: 'var(--bg-card)',
+              border: ai?.primary === 'workers-ai' ? '1px solid var(--accent-blue)' : '1px solid var(--border-color)'
             }}
           >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <Cpu size={18} color="var(--accent-blue)" />
-                <span style={{ fontWeight: 600 }}>OpenAI (Primary)</span>
+                <span style={{ fontWeight: 600 }}>Workers AI (Secondary)</span>
               </div>
-              <span className={`badge ${ai?.openai.status === 'configured' ? 'badge-green' : 'badge-red'}`}>
-                {ai?.openai.status === 'configured' ? 'ACTIVE' : 'MISSING KEY'}
+              <span className={`badge ${ai?.workersAi?.status === 'configured' ? 'badge-blue' : 'badge-amber'}`}>
+                {ai?.workersAi?.status === 'configured' ? 'EDGE-BOUND / READY' : 'BINDING MISSING'}
               </span>
             </div>
             <div style={{ marginTop: '12px', fontSize: '0.8125rem', color: 'var(--text-secondary)' }}>
-              <div>Model: <code>{ai?.openai.model || 'gpt-4o-mini'}</code></div>
-              <div style={{ marginTop: '4px' }}>Role: Primary conversational generation &amp; embeddings</div>
+              <div>Model: <code>{ai?.workersAi?.model || '@cf/meta/llama-3.3-70b-instruct'}</code></div>
+              <div style={{ marginTop: '4px' }}>Role: Edge-native zero-credential automated fallback</div>
+              <div style={{ marginTop: '4px', color: 'var(--text-muted)', fontSize: '0.75rem' }}>
+                Cost: Free edge tier / native Workers AI compute
+              </div>
             </div>
           </div>
 
-          {/* Gemini Secondary */}
+          {/* OpenAI Optional Tertiary */}
           <div
             style={{
               padding: '16px',
@@ -76,16 +106,19 @@ export const AiMemorySettings: React.FC<AiMemorySettingsProps> = ({ health }) =>
           >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <Zap size={18} color="var(--accent-purple)" />
-                <span style={{ fontWeight: 600 }}>Gemini (Secondary)</span>
+                <Cpu size={18} color="var(--text-muted)" />
+                <span style={{ fontWeight: 600 }}>OpenAI (Optional)</span>
               </div>
-              <span className={`badge ${ai?.gemini.status === 'configured' ? 'badge-blue' : 'badge-amber'}`}>
-                {ai?.gemini.status === 'configured' ? 'STANDBY / FALLBACK' : 'OPTIONAL'}
+              <span className={`badge ${ai?.openai?.status === 'configured' ? 'badge-green' : 'badge-amber'}`}>
+                {ai?.openai?.status === 'configured' ? 'CONFIGURED' : 'OPTIONAL (NO KEY)'}
               </span>
             </div>
             <div style={{ marginTop: '12px', fontSize: '0.8125rem', color: 'var(--text-secondary)' }}>
-              <div>Model: <code>{ai?.gemini.model || 'gemini-1.5-flash'}</code></div>
-              <div style={{ marginTop: '4px' }}>Role: Automatic failover if primary provider reaches rate limits</div>
+              <div>Model: <code>{ai?.openai?.model || 'gpt-4o-mini'}</code></div>
+              <div style={{ marginTop: '4px' }}>Role: Optional tertiary provider (never silently switched without credentials)</div>
+              <div style={{ marginTop: '4px', color: 'var(--text-muted)', fontSize: '0.75rem' }}>
+                Requires explicit OPENAI_API_KEY secret
+              </div>
             </div>
           </div>
         </div>

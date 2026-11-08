@@ -1,6 +1,12 @@
 import type { IAIProvider, AIMessage, CompletionOptions, CompletionResult, EmbeddingResult } from './types';
 import { AppError } from '../../middleware/error-handler';
-import { ERROR_CODES, DEFAULT_GEMINI_MODEL, DEFAULT_AI_TEMPERATURE, DEFAULT_MAX_TOKENS } from '../../config/constants';
+import {
+  ERROR_CODES,
+  DEFAULT_GEMINI_MODEL,
+  DEFAULT_GEMINI_EMBEDDING_MODEL,
+  DEFAULT_AI_TEMPERATURE,
+  DEFAULT_MAX_TOKENS
+} from '../../config/constants';
 
 export class GeminiProvider implements IAIProvider {
   public readonly name = 'gemini' as const;
@@ -98,9 +104,10 @@ export class GeminiProvider implements IAIProvider {
       throw new AppError('Gemini API key is not configured', 500, ERROR_CODES.INVALID_CONFIG);
     }
 
-    const url = `${this.baseUrl}/models/text-embedding-004:embedContent?key=${this.apiKey}`;
+    const embeddingModel = DEFAULT_GEMINI_EMBEDDING_MODEL;
+    const url = `${this.baseUrl}/models/${embeddingModel}:embedContent?key=${this.apiKey}`;
     const payload = {
-      model: 'models/text-embedding-004',
+      model: `models/${embeddingModel}`,
       content: {
         parts: [{ text }]
       }

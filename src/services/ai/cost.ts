@@ -8,7 +8,29 @@ interface ModelPricing {
 }
 
 const PRICING_TABLE: Record<string, ModelPricing> = {
-  // OpenAI Models
+  // Google Gemini Models (Primary)
+  'gemini-3.8-flash': {
+    promptCostPer1MTokens: 0.10,
+    completionCostPer1MTokens: 0.40
+  },
+  'gemini-1.5-flash': {
+    promptCostPer1MTokens: 0.075,
+    completionCostPer1MTokens: 0.30
+  },
+  'gemini-1.5-pro': {
+    promptCostPer1MTokens: 1.25,
+    completionCostPer1MTokens: 5.00
+  },
+  // Cloudflare Workers AI Models (Secondary / Edge-Native)
+  '@cf/meta/llama-3.3-70b-instruct': {
+    promptCostPer1MTokens: 0.0,
+    completionCostPer1MTokens: 0.0
+  },
+  '@cf/qwen/qwen3.8-27b': {
+    promptCostPer1MTokens: 0.0,
+    completionCostPer1MTokens: 0.0
+  },
+  // OpenAI Models (Optional Tertiary)
   'gpt-4o-mini': {
     promptCostPer1MTokens: 0.15,
     completionCostPer1MTokens: 0.60
@@ -24,15 +46,6 @@ const PRICING_TABLE: Record<string, ModelPricing> = {
   'gpt-3.5-turbo': {
     promptCostPer1MTokens: 0.50,
     completionCostPer1MTokens: 1.50
-  },
-  // Gemini Models
-  'gemini-1.5-flash': {
-    promptCostPer1MTokens: 0.075,
-    completionCostPer1MTokens: 0.30
-  },
-  'gemini-1.5-pro': {
-    promptCostPer1MTokens: 1.25,
-    completionCostPer1MTokens: 5.00
   }
 };
 
@@ -49,3 +62,4 @@ export function estimateUsageCost(
   const completionCost = (completionTokens / 1_000_000) * pricing.completionCostPer1MTokens;
   return Number((promptCost + completionCost).toFixed(7));
 }
+

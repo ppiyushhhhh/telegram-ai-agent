@@ -125,7 +125,7 @@ const handleTelegramUpdate = async (c: any) => {
   if (text === '/start') {
     const welcomeText =
       `👋 *Hello ${sender.first_name || 'there'}!*\n\n` +
-      `I am your private AI Agent running on Cloudflare Workers and powered by OpenAI.\n\n` +
+      `I am your private AI Agent running on Cloudflare Workers and powered by Google Gemini and Workers AI.\n\n` +
       `*Commands:*\n` +
       `• \`/help\` - View commands and help guide\n` +
       `• \`/status\` - View system status, active model & usage\n` +
@@ -157,8 +157,12 @@ const handleTelegramUpdate = async (c: any) => {
 
   // /status command (and /stats, /model aliases)
   if (text === '/status' || text === '/stats' || text === '/model') {
-    const activeModel = c.env.OPENAI_MODEL || 'gpt-4o-mini';
-    const primaryProvider = c.env.PRIMARY_AI_PROVIDER || 'openai';
+    const primaryProvider = c.env.PRIMARY_AI_PROVIDER || 'gemini';
+    const activeModel = primaryProvider === 'gemini'
+      ? (c.env.GEMINI_MODEL || 'gemini-3.8-flash')
+      : primaryProvider === 'workers-ai'
+      ? (c.env.WORKERS_AI_MODEL || '@cf/meta/llama-3.3-70b-instruct')
+      : (c.env.OPENAI_MODEL || 'gpt-4o-mini');
     const envName = (c.env.APP_ENV || 'development').toUpperCase();
 
     let usageInfo = '• *Lifetime Messages:* 0\n• *Estimated Cost:* $0.00';
@@ -175,7 +179,8 @@ const handleTelegramUpdate = async (c: any) => {
     const statusText =
       `⚡ *System Status & Telemetry*\n\n` +
       `• *Environment:* \`${envName}\`\n` +
-      `• *Primary AI Provider:* \`${primaryProvider.toUpperCase()}\`\n` +
+      `• *Primary AI Provider:* \`${primaryProvider.toUpperCase()}\` (Gemini)\n` +
+      `• *Secondary AI Provider:* \`WORKERS-AI\` (Cloudflare Edge)\n` +
       `• *Active Model:* \`${activeModel}\`\n` +
       `• *D1 Database:* \`ONLINE\`\n\n` +
       `📊 *Your Account Usage:*\n${usageInfo}`;
@@ -186,7 +191,12 @@ const handleTelegramUpdate = async (c: any) => {
 
   // /new command (Starts a brand new conversation session)
   if (text === '/new') {
-    const activeModel = c.env.OPENAI_MODEL || 'gpt-4o-mini';
+    const primaryProvider = c.env.PRIMARY_AI_PROVIDER || 'gemini';
+    const activeModel = primaryProvider === 'gemini'
+      ? (c.env.GEMINI_MODEL || 'gemini-3.8-flash')
+      : primaryProvider === 'workers-ai'
+      ? (c.env.WORKERS_AI_MODEL || '@cf/meta/llama-3.3-70b-instruct')
+      : (c.env.OPENAI_MODEL || 'gpt-4o-mini');
     if (dbService) {
       await dbService.createNewConversation(chatId, sender.id, activeModel);
     }
@@ -216,11 +226,16 @@ const handleTelegramUpdate = async (c: any) => {
   // 5. Send typing indicator while processing AI query
   runBackgroundTask(telegramClient.sendChatAction(chatId, 'typing'));
 
-  // 6. Text Message Handling & OpenAI Execution
+  // 6. Text Message Handling & AI Execution
   try {
     const aiService = new UnifiedAIService(c.env);
     const memoryService = new SemanticMemoryService(c.env, aiService);
-    const activeModel = c.env.OPENAI_MODEL || 'gpt-4o-mini';
+    const primaryProvider = c.env.PRIMARY_AI_PROVIDER || 'gemini';
+    const activeModel = primaryProvider === 'gemini'
+      ? (c.env.GEMINI_MODEL || 'gemini-3.8-flash')
+      : primaryProvider === 'workers-ai'
+      ? (c.env.WORKERS_AI_MODEL || '@cf/meta/llama-3.3-70b-instruct')
+      : (c.env.OPENAI_MODEL || 'gpt-4o-mini');
 
     let conversationId = `chat_${chatId}`;
     let systemInstruction =

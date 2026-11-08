@@ -60,17 +60,19 @@ telegram-ai-agent/
 
 1. **Short-Term Memory**:
    - Fast, ephemeral conversational memory managed via Cloudflare D1 / Durable Objects.
-   - Preserves multi-turn conversational context with `/reset` command capability to start fresh.
+   - Preserves multi-turn conversational context with `/new` and `/clear` command capabilities to reset session context.
 2. **Long-Term Relational Memory (Cloudflare D1)**:
-   - Relational tables for authorized Telegram users, conversation history, individual messages with roles, and audit trail.
-3. **Semantic Memory (Cloudflare Vectorize - Planned Blueprint)**:
-   - Vector embeddings of user knowledge, conversation summaries, and documents for context-aware semantic retrieval.
+   - Relational tables for authorized Telegram users, conversation history, individual messages with roles, update idempotency, and audit trails.
+3. **Semantic Memory (Cloudflare Vectorize)**:
+   - Vector embeddings using `gemini-embedding-2` with fallback to Cloudflare Workers AI (`@cf/baai/bge-base-en-v1.5`) for semantic knowledge retrieval.
 4. **Media & Document Storage (Cloudflare R2)**:
    - Media bucket binding (`MEDIA_BUCKET`) for voice notes, image generation outputs, document uploads, and chat exports.
-5. **Dual AI Engine**:
-   - **Primary**: OpenAI API (`gpt-4o`, `gpt-4o-mini`).
-   - **Secondary / Fallback**: Gemini API (`gemini-1.5-flash`, `gemini-1.5-pro`).
-   - Configurable at runtime via `PRIMARY_AI_PROVIDER` (`openai` | `gemini`).
+5. **Triple-Tier AI Engine & Automated Fallback**:
+   - **Primary**: Google Gemini API (`gemini-3.8-flash` for chat, `gemini-embedding-2` for embeddings).
+   - **Secondary (Edge-Native Fallback)**: Cloudflare Workers AI (`@cf/meta/llama-3.3-70b-instruct` / `@cf/qwen/qwen3.8-27b`). Zero external API credentials required.
+   - **Tertiary (Optional)**: OpenAI API (`gpt-4o-mini`). Strictly optional and only invoked if `OPENAI_API_KEY` is explicitly configured. Never silently switched to without credentials.
+   - Dynamic provider selection via `PRIMARY_AI_PROVIDER` (`gemini` | `workers-ai` | `openai`).
+   - Zero OpenAI dependency: `OPENAI_API_KEY` is fully decoupled and optional. Automated tests pass with zero live API keys.
 
 ---
 
@@ -107,14 +109,18 @@ The `/health` endpoint inspects the status of the entire stack:
         "status": "configured"
       },
       "aiProviders": {
-        "primary": "openai",
-        "openai": {
-          "status": "configured",
-          "model": "gpt-4o-mini"
-        },
+        "primary": "gemini",
         "gemini": {
           "status": "configured",
-          "model": "gemini-1.5-flash"
+          "model": "gemini-3.8-flash"
+        },
+        "workersAi": {
+          "status": "configured",
+          "model": "@cf/meta/llama-3.3-70b-instruct"
+        },
+        "openai": {
+          "status": "not_configured",
+          "model": "gpt-4o-mini"
         }
       },
       "storage": {

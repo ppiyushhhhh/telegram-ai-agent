@@ -1,6 +1,12 @@
 import { Hono } from 'hono';
 import type { Env, AppVariables, ApiResponse, HealthCheckData } from '../types';
-import { APP_VERSION, DEFAULT_OPENAI_MODEL, DEFAULT_GEMINI_MODEL } from '../config/constants';
+import {
+  APP_VERSION,
+  DEFAULT_PRIMARY_PROVIDER,
+  DEFAULT_GEMINI_MODEL,
+  DEFAULT_WORKERS_AI_MODEL,
+  DEFAULT_OPENAI_MODEL
+} from '../config/constants';
 
 export const healthRouter = new Hono<{ Bindings: Env; Variables: AppVariables }>();
 
@@ -36,12 +42,15 @@ healthRouter.get('/', async (c) => {
     telegramStatus = 'missing_secret';
   }
 
-  // 3. Check AI Providers (OpenAI Primary, Gemini Secondary)
-  const primaryProvider = (c.env.PRIMARY_AI_PROVIDER || 'openai') as 'openai' | 'gemini';
-  const openaiStatus: 'configured' | 'missing_key' = c.env.OPENAI_API_KEY
+  // 3. Check AI Providers (Gemini Primary, Workers AI Secondary, OpenAI Optional)
+  const primaryProvider = (c.env.PRIMARY_AI_PROVIDER || DEFAULT_PRIMARY_PROVIDER) as 'gemini' | 'workers-ai' | 'openai';
+  const geminiStatus: 'configured' | 'not_configured' = Boolean(c.env.GEMINI_API_KEY && c.env.GEMINI_API_KEY.trim().length > 0)
     ? 'configured'
-    : 'missing_key';
-  const geminiStatus: 'configured' | 'not_configured' = c.env.GEMINI_API_KEY
+    : 'not_configured';
+  const workersAiStatus: 'configured' | 'not_configured' = Boolean(c.env.AI)
+    ? 'configured'
+    : 'not_configured';
+  const openaiStatus: 'configured' | 'not_configured' = Boolean(c.env.OPENAI_API_KEY && c.env.OPENAI_API_KEY.trim().length > 0)
     ? 'configured'
     : 'not_configured';
 
@@ -51,9 +60,18 @@ healthRouter.get('/', async (c) => {
   const queueStatus: 'bound' | 'not_bound' = c.env.TASK_QUEUE ? 'bound' : 'not_bound';
 
   // Determine overall status
-  const primaryAiReady = primaryProvider === 'openai' ? openaiStatus === 'configured' : geminiStatus === 'configured';
+  let primaryAiReady = false;
+  if (primaryProvider === 'gemini') {
+    primaryAiReady = geminiStatus === 'configured';
+  } else if (primaryProvider === 'workers-ai') {
+    primaryAiReady = workersAiStatus === 'configured';
+  } else {
+    primaryAiReady = openaiStatus === 'configured';
+  }
+
+  const anyAiReady = geminiStatus === 'configured' || workersAiStatus === 'configured' || openaiStatus === 'configured';
   const isHealthy = dbStatus === 'ok' && telegramStatus === 'configured' && primaryAiReady;
-  const isDegraded = dbStatus === 'ok' || openaiStatus === 'configured' || geminiStatus === 'configured';
+  const isDegraded = (dbStatus === 'ok' || telegramStatus === 'configured') && anyAiReady;
   const overallStatus: 'healthy' | 'degraded' | 'unhealthy' = isHealthy
     ? 'healthy'
     : isDegraded
@@ -77,13 +95,17 @@ healthRouter.get('/', async (c) => {
       },
       aiProviders: {
         primary: primaryProvider,
-        openai: {
-          status: openaiStatus,
-          model: c.env.OPENAI_MODEL || DEFAULT_OPENAI_MODEL
-        },
         gemini: {
           status: geminiStatus,
           model: c.env.GEMINI_MODEL || DEFAULT_GEMINI_MODEL
+        },
+        workersAi: {
+          status: workersAiStatus,
+          model: c.env.WORKERS_AI_MODEL || DEFAULT_WORKERS_AI_MODEL
+        },
+        openai: {
+          status: openaiStatus,
+          model: c.env.OPENAI_MODEL || DEFAULT_OPENAI_MODEL
         }
       },
       storage: {

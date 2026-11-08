@@ -2,6 +2,7 @@ import test, { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { createApp } from '../src/app';
 import type { Env } from '../src/types';
+import { UnifiedAIService } from '../src/services/ai/unified';
 
 const processedUpdateIds = new Set<number>();
 const usersMap = new Map<number, any>();
@@ -89,21 +90,43 @@ const mockD1: any = {
   withSession: () => ({} as any)
 };
 
+// Cloudflare Workers AI Mock Binding (Zero API credentials needed)
+let shouldFailWorkersAI = false;
+const mockWorkersAiBinding: any = {
+  run: async (model: string, options: any) => {
+    if (shouldFailWorkersAI) {
+      throw new Error('Cloudflare Workers AI compute capacity unavailable or rate limited');
+    }
+    if (model.includes('bge') || model.includes('embedding') || model.includes('qwen3-embedding')) {
+      return { shape: [1, 768], data: [[0.12, 0.34, 0.56, 0.78]] };
+    }
+    return {
+      response: 'Hello from Cloudflare Workers AI edge model (@cf/meta/llama-3.3-70b-instruct)!'
+    };
+  }
+};
+
+// Base mock environment with Gemini as Primary, Workers AI as Secondary, and NO OpenAI key
 const mockEnv: Env = {
   DB: mockD1 as D1Database,
+  AI: mockWorkersAiBinding,
   APP_ENV: 'uat',
   LOG_LEVEL: 'info',
   TELEGRAM_BOT_TOKEN: '123456:mock_token_for_tests',
   TELEGRAM_WEBHOOK_SECRET: 'test_webhook_secret_key_123',
-  OPENAI_API_KEY: 'sk-mock-key-for-tests',
-  OPENAI_MODEL: 'gpt-4o-mini',
+  PRIMARY_AI_PROVIDER: 'gemini',
+  GEMINI_API_KEY: 'AIzaSyMockGeminiKeyForAutomatedTests',
+  GEMINI_MODEL: 'gemini-3.8-flash',
+  WORKERS_AI_MODEL: '@cf/meta/llama-3.3-70b-instruct',
   ALLOWED_TELEGRAM_USER_IDS: '111,222',
   ADMIN_API_KEY: 'test_admin_secret_key_999'
+  // OPENAI_API_KEY is deliberately omitted: demonstrates zero OpenAI dependency!
 };
 
 describe('Telegram AI Agent - Full Integration Test Suite', () => {
   const app = createApp();
   let originalFetch: typeof globalThis.fetch;
+  let shouldFailGemini = false;
   let shouldFailOpenAI = false;
 
   before(() => {
@@ -122,12 +145,56 @@ describe('Telegram AI Agent - Full Integration Test Suite', () => {
         );
       }
 
-      // OpenAI API mock
+      // Google Gemini API mock
+      if (url.includes('generativelanguage.googleapis.com')) {
+        if (shouldFailGemini) {
+          return new Response(
+            JSON.stringify({
+              error: { message: 'Gemini 3.8 Flash rate limit quota exceeded (HTTP 429)' }
+            }),
+            { status: 429, headers: { 'Content-Type': 'application/json' } }
+          );
+        }
+
+        if (url.includes(':generateContent')) {
+          return new Response(
+            JSON.stringify({
+              candidates: [
+                {
+                  content: {
+                    parts: [{ text: 'Hello! I am your AI assistant powered by Google Gemini 3.8 Flash.' }]
+                  },
+                  finishReason: 'STOP'
+                }
+              ],
+              usageMetadata: {
+                promptTokenCount: 15,
+                candidatesTokenCount: 25,
+                totalTokenCount: 40
+              }
+            }),
+            { status: 200, headers: { 'Content-Type': 'application/json' } }
+          );
+        }
+
+        if (url.includes(':embedContent')) {
+          return new Response(
+            JSON.stringify({
+              embedding: {
+                values: [0.01, 0.02, 0.03, 0.04]
+              }
+            }),
+            { status: 200, headers: { 'Content-Type': 'application/json' } }
+          );
+        }
+      }
+
+      // OpenAI API mock (Optional tertiary provider)
       if (url.includes('api.openai.com')) {
         if (shouldFailOpenAI) {
           return new Response(
             JSON.stringify({
-              error: { message: 'Rate limit exceeded or OpenAI service unavailable' }
+              error: { message: 'OpenAI rate limit exceeded' }
             }),
             { status: 429, headers: { 'Content-Type': 'application/json' } }
           );
@@ -141,7 +208,7 @@ describe('Telegram AI Agent - Full Integration Test Suite', () => {
                 index: 0,
                 message: {
                   role: 'assistant',
-                  content: 'Hello! I am your AI Assistant powered by OpenAI and Cloudflare Workers.'
+                  content: 'Hello from OpenAI tertiary provider.'
                 },
                 finish_reason: 'stop'
               }
@@ -175,7 +242,7 @@ describe('Telegram AI Agent - Full Integration Test Suite', () => {
     assert.equal(body.data.status, 'online');
   });
 
-  it('GET /health should return system status and component checks', async () => {
+  it('GET /health should return system status with Gemini Primary, Workers AI Secondary, and OpenAI optional', async () => {
     const res = await app.request('/health', { method: 'GET' }, mockEnv);
     assert.equal(res.status, 200);
 
@@ -189,7 +256,9 @@ describe('Telegram AI Agent - Full Integration Test Suite', () => {
           telegram: { status: string };
           aiProviders: {
             primary: string;
-            openai: { status: string };
+            gemini: { status: string; model: string };
+            workersAi: { status: string; model: string };
+            openai: { status: string; model: string };
           };
         };
       };
@@ -199,7 +268,11 @@ describe('Telegram AI Agent - Full Integration Test Suite', () => {
     assert.equal(body.data.status, 'healthy');
     assert.equal(body.data.checks.database.status, 'ok');
     assert.equal(body.data.checks.telegram.status, 'configured');
-    assert.equal(body.data.checks.aiProviders.openai.status, 'configured');
+    assert.equal(body.data.checks.aiProviders.primary, 'gemini');
+    assert.equal(body.data.checks.aiProviders.gemini.status, 'configured');
+    assert.equal(body.data.checks.aiProviders.gemini.model, 'gemini-3.8-flash');
+    assert.equal(body.data.checks.aiProviders.workersAi.status, 'configured');
+    assert.equal(body.data.checks.aiProviders.openai.status, 'not_configured');
   });
 
   // 2. Webhook Verification
@@ -447,11 +520,11 @@ describe('Telegram AI Agent - Full Integration Test Suite', () => {
         message_id: 200,
         from: { id: 111, first_name: 'Piyush', is_bot: false },
         chat: { id: 111, type: 'private' },
-        text: 'What is the capital of France?'
+        text: 'What is Cloudflare Workers?'
       }
     };
 
-    // First delivery
+    // First delivery (executes with Gemini primary)
     const res1 = await app.request(
       '/webhooks/telegram',
       {
@@ -467,7 +540,7 @@ describe('Telegram AI Agent - Full Integration Test Suite', () => {
     assert.equal(res1.status, 200);
     const body1 = await res1.json<{ success: boolean; provider: string }>();
     assert.equal(body1.success, true);
-    assert.equal(body1.provider, 'openai');
+    assert.equal(body1.provider, 'gemini');
 
     // Duplicate delivery with same update_id
     const res2 = await app.request(
@@ -488,9 +561,9 @@ describe('Telegram AI Agent - Full Integration Test Suite', () => {
     assert.equal(body2.message, 'Duplicate update ignored');
   });
 
-  // 7. OpenAI API Failures & Error Handling
-  it('POST /webhooks/telegram should handle OpenAI API failures gracefully', async () => {
-    shouldFailOpenAI = true;
+  // 7. Automated Fallback: Gemini Primary -> Cloudflare Workers AI Secondary
+  it('POST /webhooks/telegram should automatically fall back to Workers AI when Gemini rate limits', async () => {
+    shouldFailGemini = true; // Simulate 429 rate limit or Gemini failure
 
     const res = await app.request(
       '/webhooks/telegram',
@@ -506,21 +579,128 @@ describe('Telegram AI Agent - Full Integration Test Suite', () => {
             message_id: 201,
             from: { id: 111, first_name: 'Piyush', is_bot: false },
             chat: { id: 111, type: 'private' },
-            text: 'Hello failing query'
+            text: 'Tell me about edge computing.'
           }
         })
       },
       mockEnv
     );
 
-    shouldFailOpenAI = false;
-    assert.equal(res.status, 500);
-    const body = await res.json<{ success: boolean; error: any }>();
-    assert.equal(body.success, false);
-    assert.ok(body.error);
+    shouldFailGemini = false;
+    assert.equal(res.status, 200);
+    const body = await res.json<{ success: boolean; provider: string; model: string }>();
+    assert.equal(body.success, true);
+    assert.equal(body.provider, 'workers-ai');
   });
 
-  // 8. Admin API Endpoints
+  // 8. Missing Credentials Fallback Handling
+  it('POST /webhooks/telegram should cleanly fall back to Workers AI if GEMINI_API_KEY is not configured', async () => {
+    const envWithoutGeminiKey: Env = {
+      ...mockEnv,
+      GEMINI_API_KEY: undefined
+    };
+
+    const res = await app.request(
+      '/webhooks/telegram',
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-telegram-bot-api-secret-token': 'test_webhook_secret_key_123'
+        },
+        body: JSON.stringify({
+          update_id: 889,
+          message: {
+            message_id: 202,
+            from: { id: 111, first_name: 'Piyush', is_bot: false },
+            chat: { id: 111, type: 'private' },
+            text: 'Hello without Gemini key'
+          }
+        })
+      },
+      envWithoutGeminiKey
+    );
+
+    assert.equal(res.status, 200);
+    const body = await res.json<{ success: boolean; provider: string }>();
+    assert.equal(body.success, true);
+    assert.equal(body.provider, 'workers-ai');
+  });
+
+  // 9. All Providers Failure Handling
+  it('POST /webhooks/telegram should gracefully report 500 when all configured providers fail', async () => {
+    shouldFailGemini = true;
+    shouldFailWorkersAI = true;
+
+    const res = await app.request(
+      '/webhooks/telegram',
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-telegram-bot-api-secret-token': 'test_webhook_secret_key_123'
+        },
+        body: JSON.stringify({
+          update_id: 890,
+          message: {
+            message_id: 203,
+            from: { id: 111, first_name: 'Piyush', is_bot: false },
+            chat: { id: 111, type: 'private' },
+            text: 'Both providers failing'
+          }
+        })
+      },
+      mockEnv
+    );
+
+    shouldFailGemini = false;
+    shouldFailWorkersAI = false;
+
+    assert.equal(res.status, 500);
+    const body = await res.json<{ success: boolean; error: string }>();
+    assert.equal(body.success, false);
+  });
+
+  // 10. Optional Tertiary OpenAI Provider (Executed ONLY when credentials supplied)
+  it('UnifiedAIService should fall back to OpenAI as tertiary provider if Gemini and Workers AI fail and OpenAI key is provided', async () => {
+    shouldFailGemini = true;
+    shouldFailWorkersAI = true;
+
+    const envWithOpenAI: Env = {
+      ...mockEnv,
+      OPENAI_API_KEY: 'sk-mock-key-for-test-fallback'
+    };
+
+    const unified = new UnifiedAIService(envWithOpenAI);
+    const result = await unified.generateChatResponse([
+      { role: 'user', content: 'Fallback to optional tertiary provider' }
+    ]);
+
+    shouldFailGemini = false;
+    shouldFailWorkersAI = false;
+
+    assert.equal(result.provider, 'openai');
+    assert.match(result.text, /OpenAI tertiary provider/);
+  });
+
+  // 11. Vector Embeddings Generation & Fallback
+  it('UnifiedAIService should generate embeddings using gemini-embedding-2 and fall back to Workers AI', async () => {
+    const unified = new UnifiedAIService(mockEnv);
+    const embResult = await unified.generateEmbedding('Test memory sentence');
+
+    assert.equal(embResult.provider, 'gemini');
+    assert.equal(embResult.dimensions, 4);
+
+    // Now test fallback to Workers AI embedding
+    shouldFailGemini = true;
+    const fallbackEmb = await unified.generateEmbedding('Test fallback memory');
+    shouldFailGemini = false;
+
+    assert.equal(fallbackEmb.provider, 'workers-ai');
+    assert.equal(fallbackEmb.dimensions, 4);
+  });
+
+  // 12. Admin API Endpoints
   it('GET /api/admin/overview should reject requests without x-admin-key', async () => {
     const res = await app.request('/api/admin/overview', { method: 'GET' }, mockEnv);
     assert.equal(res.status, 401);
@@ -529,7 +709,7 @@ describe('Telegram AI Agent - Full Integration Test Suite', () => {
     assert.equal(body.error.code, 'UNAUTHORIZED');
   });
 
-  it('GET /api/admin/overview should return system stats with valid x-admin-key', async () => {
+  it('GET /api/admin/overview should return system stats and Gemini primary model with valid x-admin-key', async () => {
     const res = await app.request(
       '/api/admin/overview',
       {
@@ -539,9 +719,10 @@ describe('Telegram AI Agent - Full Integration Test Suite', () => {
       mockEnv
     );
     assert.equal(res.status, 200);
-    const body = await res.json<{ success: boolean; data: { environment: string; model: string } }>();
+    const body = await res.json<{ success: boolean; data: { environment: string; model: string; primaryProvider: string } }>();
     assert.equal(body.success, true);
     assert.equal(body.data.environment, 'uat');
-    assert.equal(body.data.model, 'gpt-4o-mini');
+    assert.equal(body.data.primaryProvider, 'gemini');
+    assert.equal(body.data.model, 'gemini-3.8-flash');
   });
 });

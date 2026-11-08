@@ -29,18 +29,21 @@ TELEGRAM_BOT_TOKEN=123456789:ABCdefGhIJKlmNoPQRsTUVwxyZ_EXAMPLE
 # Generate a random 32+ character hex or alphanumeric string
 TELEGRAM_WEBHOOK_SECRET=replace_with_a_secure_random_token_min_16_chars
 
-# AI Provider Selection: 'openai' (primary) | 'gemini' (secondary/fallback)
-PRIMARY_AI_PROVIDER=openai
+# AI Provider Selection: 'gemini' (primary) | 'workers-ai' (secondary) | 'openai' (optional)
+PRIMARY_AI_PROVIDER=gemini
 
-# OpenAI Configuration (Primary Provider)
-OPENAI_API_KEY=sk-proj-example1234567890abcdefghijklmnopqrstuvwxyz
+# Google Gemini API Configuration (Primary Provider)
+GEMINI_API_KEY=AIzaSyExample1234567890abcdefghijklmnopqrstuvwxyz
+GEMINI_MODEL=gemini-3.8-flash
+
+# Cloudflare Workers AI Configuration (Secondary Edge-Native Provider - zero external API key needed)
+WORKERS_AI_MODEL=@cf/meta/llama-3.3-70b-instruct
+
+# OpenAI Configuration (Optional Tertiary Provider - only used if OPENAI_API_KEY is supplied)
+OPENAI_API_KEY=
 OPENAI_MODEL=gpt-4o-mini
 AI_TEMPERATURE=0.7
 MAX_TOKENS=1000
-
-# Gemini API Configuration (Secondary / Fallback Provider)
-GEMINI_API_KEY=AIzaSyExample1234567890abcdefghijklmnopqrstuvwxyz
-GEMINI_MODEL=gemini-1.5-flash
 
 # Private bot access control (comma-separated list of allowed Telegram user IDs)
 # Only approved Telegram user IDs can access the bot

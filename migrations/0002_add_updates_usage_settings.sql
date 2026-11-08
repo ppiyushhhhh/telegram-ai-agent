@@ -45,3 +45,4 @@ INSERT OR IGNORE INTO system_settings (key, value, description) VALUES
   ('default_temperature', '0.7', 'Default temperature for responses'),
   ('max_tokens', '1000', 'Maximum response tokens'),
   ('allowlist_enforced', 'true', 'Whether Telegram numeric ID allowlist is strictly enforced');
+

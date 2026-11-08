@@ -1,101 +1,146 @@
 import type { Env } from '../../types';
-import type { AIMessage, CompletionOptions, CompletionResult, EmbeddingResult } from './types';
-import { OpenAIProvider } from './openai';
+import type { AIMessage, CompletionOptions, CompletionResult, EmbeddingResult, IAIProvider } from './types';
 import { GeminiProvider } from './gemini';
+import { WorkersAIProvider } from './workers-ai';
+import { OpenAIProvider } from './openai';
 import { AppError } from '../../middleware/error-handler';
-import { ERROR_CODES } from '../../config/constants';
+import { ERROR_CODES, DEFAULT_PRIMARY_PROVIDER, DEFAULT_GEMINI_MODEL, DEFAULT_WORKERS_AI_MODEL, DEFAULT_OPENAI_MODEL } from '../../config/constants';
 
 export class UnifiedAIService {
-  private openai: OpenAIProvider;
   private gemini: GeminiProvider;
-  private primaryProviderName: 'openai' | 'gemini';
+  private workersAi: WorkersAIProvider;
+  private openai: OpenAIProvider;
+  private primaryProviderName: 'gemini' | 'workers-ai' | 'openai';
 
   constructor(env: Env) {
-    this.primaryProviderName = (env.PRIMARY_AI_PROVIDER || 'openai') as 'openai' | 'gemini';
-    this.openai = new OpenAIProvider(env.OPENAI_API_KEY, env.OPENAI_MODEL);
-    this.gemini = new GeminiProvider(env.GEMINI_API_KEY, env.GEMINI_MODEL);
+    this.primaryProviderName = (env.PRIMARY_AI_PROVIDER || DEFAULT_PRIMARY_PROVIDER) as 'gemini' | 'workers-ai' | 'openai';
+    this.gemini = new GeminiProvider(env.GEMINI_API_KEY, env.GEMINI_MODEL || DEFAULT_GEMINI_MODEL);
+    this.workersAi = new WorkersAIProvider(env.AI, env.WORKERS_AI_MODEL || DEFAULT_WORKERS_AI_MODEL);
+    this.openai = new OpenAIProvider(env.OPENAI_API_KEY, env.OPENAI_MODEL || DEFAULT_OPENAI_MODEL);
   }
 
-  public getPrimaryProviderName(): 'openai' | 'gemini' {
+  public getPrimaryProviderName(): 'gemini' | 'workers-ai' | 'openai' {
     return this.primaryProviderName;
   }
 
-  public isProviderReady(provider: 'openai' | 'gemini'): boolean {
-    return provider === 'openai' ? this.openai.isConfigured() : this.gemini.isConfigured();
+  public isProviderReady(provider: 'gemini' | 'workers-ai' | 'openai'): boolean {
+    switch (provider) {
+      case 'gemini':
+        return this.gemini.isConfigured();
+      case 'workers-ai':
+        return this.workersAi.isConfigured();
+      case 'openai':
+        return this.openai.isConfigured();
+      default:
+        return false;
+    }
   }
 
   /**
-   * Generates a chat completion using the primary AI provider.
-   * If the primary provider fails and the secondary provider is configured,
-   * automatically falls back to the secondary provider for maximum resilience.
+   * Builds the fallback chain in order of priority:
+   * 1. Primary provider (default: Gemini)
+   * 2. Secondary provider (Cloudflare Workers AI - edge-native, zero credentials)
+   * 3. Tertiary provider (OpenAI - strictly optional, only if credentials supplied)
+   */
+  private getProviderChain(): IAIProvider[] {
+    const providers: IAIProvider[] = [];
+
+    if (this.primaryProviderName === 'gemini') {
+      providers.push(this.gemini, this.workersAi);
+      if (this.openai.isConfigured()) {
+        providers.push(this.openai);
+      }
+    } else if (this.primaryProviderName === 'workers-ai') {
+      providers.push(this.workersAi, this.gemini);
+      if (this.openai.isConfigured()) {
+        providers.push(this.openai);
+      }
+    } else {
+      // primary is openai
+      providers.push(this.openai, this.gemini, this.workersAi);
+    }
+
+    return providers;
+  }
+
+  /**
+   * Generates a chat completion following the priority fallback chain:
+   * Primary (Gemini) -> Secondary (Workers AI) -> Tertiary (OpenAI if configured)
    */
   public async generateChatResponse(
     messages: AIMessage[],
     options?: CompletionOptions
   ): Promise<CompletionResult> {
-    const isPrimaryOpenAI = this.primaryProviderName === 'openai';
-    const primary = isPrimaryOpenAI ? this.openai : this.gemini;
-    const fallback = isPrimaryOpenAI ? this.gemini : this.openai;
+    const chain = this.getProviderChain();
+    const errors: Array<{ provider: string; error: string }> = [];
 
-    // Check if primary is configured
-    if (!primary.isConfigured()) {
-      if (fallback.isConfigured()) {
-        console.warn(`Primary AI provider '${primary.name}' is unconfigured. Using fallback '${fallback.name}'.`);
-        return fallback.generateCompletion(messages, options);
-      }
-      throw new AppError(
-        `Neither primary (${primary.name}) nor secondary (${fallback.name}) AI provider is configured.`,
-        500,
-        ERROR_CODES.INVALID_CONFIG
-      );
-    }
-
-    try {
-      return await primary.generateCompletion(messages, options);
-    } catch (primaryError) {
-      console.warn(
-        `Primary AI provider '${primary.name}' failed. Attempting fallback to '${fallback.name}'. Error:`,
-        primaryError instanceof Error ? primaryError.message : primaryError
-      );
-
-      if (fallback.isConfigured()) {
-        try {
-          const fallbackResult = await fallback.generateCompletion(messages, options);
-          console.log(`Successfully completed response using fallback AI provider '${fallback.name}'.`);
-          return fallbackResult;
-        } catch (fallbackError) {
-          console.error(`Fallback AI provider '${fallback.name}' also failed:`, fallbackError);
-          throw primaryError; // Re-throw original primary error if both fail
-        }
+    for (const provider of chain) {
+      if (!provider.isConfigured()) {
+        console.warn(`AI provider '${provider.name}' is not configured. Skipping.`);
+        continue;
       }
 
-      throw primaryError;
+      try {
+        console.log(`Attempting completion with AI provider '${provider.name}'...`);
+        const result = await Promise.race([
+          provider.generateCompletion(messages, options),
+          new Promise<never>((_, reject) =>
+            setTimeout(() => reject(new Error(`Timeout after 20s for provider ${provider.name}`)), 20000)
+          )
+        ]);
+
+        return result;
+      } catch (err) {
+        const errorMsg = err instanceof Error ? err.message : String(err);
+        console.warn(`Provider '${provider.name}' failed: ${errorMsg}. Attempting next available provider in fallback chain...`);
+        errors.push({ provider: provider.name, error: errorMsg });
+      }
     }
+
+    // If all providers failed or none were configured
+    const errorSummary = errors.length > 0
+      ? errors.map(e => `[${e.provider}]: ${e.error}`).join('; ')
+      : 'No AI providers are configured with valid credentials or bindings.';
+
+    throw new AppError(
+      `All AI providers failed to generate a response. Details: ${errorSummary}`,
+      502,
+      ERROR_CODES.INTERNAL_ERROR,
+      { errors }
+    );
   }
 
   /**
-   * Generates vector embeddings for semantic memory search.
+   * Generates vector embeddings using the fallback chain.
    */
   public async generateEmbedding(text: string): Promise<EmbeddingResult> {
-    const isPrimaryOpenAI = this.primaryProviderName === 'openai';
-    const primary = isPrimaryOpenAI ? this.openai : this.gemini;
-    const fallback = isPrimaryOpenAI ? this.gemini : this.openai;
+    const chain = this.getProviderChain();
+    const errors: Array<{ provider: string; error: string }> = [];
 
-    if (primary.isConfigured()) {
-      try {
-        return await primary.generateEmbedding(text);
-      } catch (err) {
-        if (fallback.isConfigured()) {
-          console.warn(`Primary embedding provider failed, attempting fallback to '${fallback.name}'.`);
-          return fallback.generateEmbedding(text);
-        }
-        throw err;
+    for (const provider of chain) {
+      if (!provider.isConfigured()) {
+        continue;
       }
-    } else if (fallback.isConfigured()) {
-      return fallback.generateEmbedding(text);
+
+      try {
+        const result = await Promise.race([
+          provider.generateEmbedding(text),
+          new Promise<never>((_, reject) =>
+            setTimeout(() => reject(new Error(`Timeout after 15s for embedding provider ${provider.name}`)), 15000)
+          )
+        ]);
+        return result;
+      } catch (err) {
+        const errorMsg = err instanceof Error ? err.message : String(err);
+        console.warn(`Embedding provider '${provider.name}' failed: ${errorMsg}`);
+        errors.push({ provider: provider.name, error: errorMsg });
+      }
     }
 
-    throw new AppError('No configured AI provider available for vector embeddings.', 500, ERROR_CODES.INVALID_CONFIG);
+    throw new AppError(
+      `No configured AI provider available for vector embeddings. Errors: ${errors.map(e => e.error).join(', ')}`,
+      500,
+      ERROR_CODES.INVALID_CONFIG
+    );
   }
 }
-

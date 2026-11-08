@@ -73,30 +73,37 @@ export const HealthMonitor: React.FC<HealthMonitorProps> = ({ health, overview }
           </div>
         </div>
 
-        {/* AI Providers (OpenAI & Gemini) */}
+        {/* AI Providers (Gemini Primary, Workers AI Secondary, OpenAI Optional) */}
         <div className="card">
           <div className="card-title">
-            <span>AI Engine ({health?.checks.aiProviders.primary === 'gemini' ? 'Gemini' : 'OpenAI'})</span>
+            <span>AI Engine ({health?.checks.aiProviders.primary === 'workers-ai' ? 'Workers AI' : health?.checks.aiProviders.primary === 'openai' ? 'OpenAI' : 'Gemini'})</span>
             <Cpu size={18} color="var(--accent-purple)" />
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '6px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '6px', flexWrap: 'wrap' }}>
             <span
               className={`badge ${
-                health?.checks.aiProviders.openai.status === 'configured' ? 'badge-green' : 'badge-red'
+                health?.checks.aiProviders.gemini?.status === 'configured' ? 'badge-green' : 'badge-red'
               }`}
             >
-              OpenAI: {health?.checks.aiProviders.openai.status === 'configured' ? 'READY' : 'NO KEY'}
+              Gemini (Primary): {health?.checks.aiProviders.gemini?.status === 'configured' ? 'READY' : 'MISSING KEY'}
             </span>
             <span
               className={`badge ${
-                health?.checks.aiProviders.gemini.status === 'configured' ? 'badge-blue' : 'badge-amber'
+                health?.checks.aiProviders.workersAi?.status === 'configured' ? 'badge-blue' : 'badge-amber'
               }`}
             >
-              Gemini: {health?.checks.aiProviders.gemini.status === 'configured' ? 'READY' : 'OFF'}
+              Workers AI (Secondary): {health?.checks.aiProviders.workersAi?.status === 'configured' ? 'READY' : 'OFF'}
+            </span>
+            <span
+              className={`badge ${
+                health?.checks.aiProviders.openai?.status === 'configured' ? 'badge-green' : 'badge-amber'
+              }`}
+            >
+              OpenAI (Optional): {health?.checks.aiProviders.openai?.status === 'configured' ? 'READY' : 'UNCONFIGURED'}
             </span>
           </div>
           <div className="card-subtitle">
-            Primary: {health?.checks.aiProviders.openai.model || 'gpt-4o-mini'} &bull; Secondary: {health?.checks.aiProviders.gemini.model || 'gemini-1.5-flash'}
+            Primary: {health?.checks.aiProviders.gemini?.model || 'gemini-3.8-flash'} &bull; Secondary: {health?.checks.aiProviders.workersAi?.model || '@cf/meta/llama-3.3-70b-instruct'}
           </div>
         </div>
 

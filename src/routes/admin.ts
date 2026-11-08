@@ -22,13 +22,21 @@ adminRouter.get('/overview', async (c) => {
         totalAuditLogs: 0
       };
 
+  const primaryProvider = c.env.PRIMARY_AI_PROVIDER || 'gemini';
+  const activeModel = primaryProvider === 'gemini'
+    ? (c.env.GEMINI_MODEL || 'gemini-3.8-flash')
+    : primaryProvider === 'workers-ai'
+    ? (c.env.WORKERS_AI_MODEL || '@cf/meta/llama-3.3-70b-instruct')
+    : (c.env.OPENAI_MODEL || 'gpt-4o-mini');
+
   return c.json({
     success: true,
     data: {
       version: APP_VERSION,
       environment: c.env.APP_ENV || 'development',
+      primaryProvider,
       stats,
-      model: c.env.OPENAI_MODEL || 'gpt-4o-mini',
+      model: activeModel,
       uptimeSeconds: Math.floor(performance.now() / 1000)
     }
   });
@@ -108,11 +116,19 @@ adminRouter.get('/logs', async (c) => {
 
 // 5. Configuration & Model Settings
 adminRouter.get('/config', (c) => {
+  const primaryProvider = c.env.PRIMARY_AI_PROVIDER || 'gemini';
+  const activeModel = primaryProvider === 'gemini'
+    ? (c.env.GEMINI_MODEL || 'gemini-3.8-flash')
+    : primaryProvider === 'workers-ai'
+    ? (c.env.WORKERS_AI_MODEL || '@cf/meta/llama-3.3-70b-instruct')
+    : (c.env.OPENAI_MODEL || 'gpt-4o-mini');
+
   return c.json({
     success: true,
     data: {
       environment: c.env.APP_ENV || 'development',
-      model: c.env.OPENAI_MODEL || 'gpt-4o-mini',
+      primaryProvider,
+      model: activeModel,
       temperature: c.env.AI_TEMPERATURE ? parseFloat(c.env.AI_TEMPERATURE) : 0.7,
       maxTokens: c.env.MAX_TOKENS ? parseInt(c.env.MAX_TOKENS, 10) : 1000,
       rateLimit: c.env.RATE_LIMIT_PER_MINUTE ? parseInt(c.env.RATE_LIMIT_PER_MINUTE, 10) : 30

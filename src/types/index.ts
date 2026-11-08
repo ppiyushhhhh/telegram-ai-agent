@@ -18,6 +18,9 @@ export interface Env {
   // Cloudflare Durable Objects (Stateful short-term memory & per-user locks)
   SESSION_DO?: DurableObjectNamespace;
 
+  // Cloudflare Workers AI binding (Edge-native serverless models)
+  AI?: any;
+
   // Environment mode: 'development' | 'uat' | 'production'
   APP_ENV: string;
 
@@ -29,18 +32,23 @@ export interface Env {
   TELEGRAM_WEBHOOK_SECRET: string;
   ALLOWED_TELEGRAM_USER_IDS?: string;
 
-  // AI Provider Selection: 'openai' (primary) | 'gemini' (secondary/fallback)
-  PRIMARY_AI_PROVIDER?: 'openai' | 'gemini';
+  // AI Provider Selection: 'gemini' (primary) | 'workers-ai' (secondary) | 'openai' (optional)
+  PRIMARY_AI_PROVIDER?: 'gemini' | 'workers-ai' | 'openai';
 
-  // OpenAI Configuration (Primary Provider)
-  OPENAI_API_KEY: string;
-  OPENAI_MODEL?: string;
-  AI_TEMPERATURE?: string;
-  MAX_TOKENS?: string;
-
-  // Gemini Configuration (Secondary / Fallback Provider)
+  // Gemini Configuration (Primary Provider)
   GEMINI_API_KEY?: string;
   GEMINI_MODEL?: string;
+
+  // Cloudflare Workers AI Configuration (Secondary / Fallback Provider)
+  WORKERS_AI_MODEL?: string;
+
+  // OpenAI Configuration (Optional Tertiary Provider)
+  OPENAI_API_KEY?: string;
+  OPENAI_MODEL?: string;
+
+  // Model parameters
+  AI_TEMPERATURE?: string;
+  MAX_TOKENS?: string;
 
   // Admin and Internal API
   ADMIN_API_KEY?: string;
@@ -84,12 +92,16 @@ export interface HealthCheckData {
       status: 'configured' | 'missing_token' | 'missing_secret';
     };
     aiProviders: {
-      primary: 'openai' | 'gemini';
-      openai: {
-        status: 'configured' | 'missing_key';
+      primary: 'gemini' | 'workers-ai' | 'openai';
+      gemini: {
+        status: 'configured' | 'not_configured';
         model: string;
       };
-      gemini: {
+      workersAi: {
+        status: 'configured' | 'not_configured';
+        model: string;
+      };
+      openai: {
         status: 'configured' | 'not_configured';
         model: string;
       };
