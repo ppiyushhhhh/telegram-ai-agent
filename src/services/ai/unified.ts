@@ -1,146 +1,124 @@
 import type { Env } from '../../types';
-import type { AIMessage, CompletionOptions, CompletionResult, EmbeddingResult, IAIProvider } from './types';
-import { GeminiProvider } from './gemini';
+import type { AIMessage, CompletionOptions, CompletionResult, EmbeddingResult } from './types';
 import { WorkersAIProvider } from './workers-ai';
-import { OpenAIProvider } from './openai';
 import { AppError } from '../../middleware/error-handler';
-import { ERROR_CODES, DEFAULT_PRIMARY_PROVIDER, DEFAULT_GEMINI_MODEL, DEFAULT_WORKERS_AI_MODEL, DEFAULT_OPENAI_MODEL } from '../../config/constants';
+import {
+  ERROR_CODES,
+  DEFAULT_PRIMARY_PROVIDER,
+  DEFAULT_WORKERS_AI_MODEL,
+  DEFAULT_WORKERS_AI_FALLBACK_MODELS,
+  DEFAULT_WORKERS_AI_EMBEDDING_MODEL,
+  EMBEDDING_DIMENSIONS
+} from '../../config/constants';
 
+/**
+ * UnifiedAIService: Primary and sole AI service provider powered exclusively
+ * by Cloudflare Workers AI serverless edge compute models.
+ * Zero external credentials or API keys required.
+ */
 export class UnifiedAIService {
-  private gemini: GeminiProvider;
   private workersAi: WorkersAIProvider;
-  private openai: OpenAIProvider;
-  private primaryProviderName: 'gemini' | 'workers-ai' | 'openai';
+  private primaryProviderName: 'workers-ai' = 'workers-ai';
 
   constructor(env: Env) {
-    this.primaryProviderName = (env.PRIMARY_AI_PROVIDER || DEFAULT_PRIMARY_PROVIDER) as 'gemini' | 'workers-ai' | 'openai';
-    this.gemini = new GeminiProvider(env.GEMINI_API_KEY, env.GEMINI_MODEL || DEFAULT_GEMINI_MODEL);
-    this.workersAi = new WorkersAIProvider(env.AI, env.WORKERS_AI_MODEL || DEFAULT_WORKERS_AI_MODEL);
-    this.openai = new OpenAIProvider(env.OPENAI_API_KEY, env.OPENAI_MODEL || DEFAULT_OPENAI_MODEL);
+    this.workersAi = new WorkersAIProvider(
+      env.AI,
+      env.WORKERS_AI_MODEL || DEFAULT_WORKERS_AI_MODEL
+    );
   }
 
-  public getPrimaryProviderName(): 'gemini' | 'workers-ai' | 'openai' {
+  public getPrimaryProviderName(): 'workers-ai' {
     return this.primaryProviderName;
   }
 
-  public isProviderReady(provider: 'gemini' | 'workers-ai' | 'openai'): boolean {
-    switch (provider) {
-      case 'gemini':
-        return this.gemini.isConfigured();
-      case 'workers-ai':
-        return this.workersAi.isConfigured();
-      case 'openai':
-        return this.openai.isConfigured();
-      default:
-        return false;
+  public isProviderReady(provider: string = 'workers-ai'): boolean {
+    if (provider === 'workers-ai') {
+      return this.workersAi.isConfigured();
     }
+    return false;
+  }
+
+  public getActiveModel(): string {
+    return this.workersAi.getActiveModel();
+  }
+
+  public getFallbackModels(): readonly string[] {
+    return DEFAULT_WORKERS_AI_FALLBACK_MODELS;
+  }
+
+  public getEmbeddingModel(): string {
+    return DEFAULT_WORKERS_AI_EMBEDDING_MODEL;
+  }
+
+  public getEmbeddingDimensions(): number {
+    return EMBEDDING_DIMENSIONS;
   }
 
   /**
-   * Builds the fallback chain in order of priority:
-   * 1. Primary provider (default: Gemini)
-   * 2. Secondary provider (Cloudflare Workers AI - edge-native, zero credentials)
-   * 3. Tertiary provider (OpenAI - strictly optional, only if credentials supplied)
-   */
-  private getProviderChain(): IAIProvider[] {
-    const providers: IAIProvider[] = [];
-
-    if (this.primaryProviderName === 'gemini') {
-      providers.push(this.gemini, this.workersAi);
-      if (this.openai.isConfigured()) {
-        providers.push(this.openai);
-      }
-    } else if (this.primaryProviderName === 'workers-ai') {
-      providers.push(this.workersAi, this.gemini);
-      if (this.openai.isConfigured()) {
-        providers.push(this.openai);
-      }
-    } else {
-      // primary is openai
-      providers.push(this.openai, this.gemini, this.workersAi);
-    }
-
-    return providers;
-  }
-
-  /**
-   * Generates a chat completion following the priority fallback chain:
-   * Primary (Gemini) -> Secondary (Workers AI) -> Tertiary (OpenAI if configured)
+   * Generates a chat completion using Cloudflare Workers AI with automatic
+   * multi-model edge resilience fallback (Llama 3.3 70B -> Llama 3.2 3B -> Llama 3 8B).
    */
   public async generateChatResponse(
     messages: AIMessage[],
     options?: CompletionOptions
   ): Promise<CompletionResult> {
-    const chain = this.getProviderChain();
-    const errors: Array<{ provider: string; error: string }> = [];
-
-    for (const provider of chain) {
-      if (!provider.isConfigured()) {
-        console.warn(`AI provider '${provider.name}' is not configured. Skipping.`);
-        continue;
-      }
-
-      try {
-        console.log(`Attempting completion with AI provider '${provider.name}'...`);
-        const result = await Promise.race([
-          provider.generateCompletion(messages, options),
-          new Promise<never>((_, reject) =>
-            setTimeout(() => reject(new Error(`Timeout after 20s for provider ${provider.name}`)), 20000)
-          )
-        ]);
-
-        return result;
-      } catch (err) {
-        const errorMsg = err instanceof Error ? err.message : String(err);
-        console.warn(`Provider '${provider.name}' failed: ${errorMsg}. Attempting next available provider in fallback chain...`);
-        errors.push({ provider: provider.name, error: errorMsg });
-      }
+    if (!this.workersAi.isConfigured()) {
+      throw new AppError(
+        'Cloudflare Workers AI binding (env.AI) is not configured.',
+        500,
+        ERROR_CODES.INVALID_CONFIG
+      );
     }
 
-    // If all providers failed or none were configured
-    const errorSummary = errors.length > 0
-      ? errors.map(e => `[${e.provider}]: ${e.error}`).join('; ')
-      : 'No AI providers are configured with valid credentials or bindings.';
+    try {
+      const result = await Promise.race([
+        this.workersAi.generateCompletion(messages, options),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error('Timeout after 20s for Workers AI execution')), 20000)
+        )
+      ]);
 
-    throw new AppError(
-      `All AI providers failed to generate a response. Details: ${errorSummary}`,
-      502,
-      ERROR_CODES.INTERNAL_ERROR,
-      { errors }
-    );
+      return result;
+    } catch (err) {
+      const errorMsg = err instanceof Error ? err.message : String(err);
+      throw new AppError(
+        `Workers AI failed to generate response: ${errorMsg}`,
+        502,
+        ERROR_CODES.WORKERS_AI_ERROR,
+        { originalError: errorMsg }
+      );
+    }
   }
 
   /**
-   * Generates vector embeddings using the fallback chain.
+   * Generates 768-dimensional vector embeddings using Cloudflare Workers AI (@cf/baai/bge-base-en-v1.5).
    */
   public async generateEmbedding(text: string): Promise<EmbeddingResult> {
-    const chain = this.getProviderChain();
-    const errors: Array<{ provider: string; error: string }> = [];
-
-    for (const provider of chain) {
-      if (!provider.isConfigured()) {
-        continue;
-      }
-
-      try {
-        const result = await Promise.race([
-          provider.generateEmbedding(text),
-          new Promise<never>((_, reject) =>
-            setTimeout(() => reject(new Error(`Timeout after 15s for embedding provider ${provider.name}`)), 15000)
-          )
-        ]);
-        return result;
-      } catch (err) {
-        const errorMsg = err instanceof Error ? err.message : String(err);
-        console.warn(`Embedding provider '${provider.name}' failed: ${errorMsg}`);
-        errors.push({ provider: provider.name, error: errorMsg });
-      }
+    if (!this.workersAi.isConfigured()) {
+      throw new AppError(
+        'Cloudflare Workers AI binding (env.AI) is not configured for vector embeddings.',
+        500,
+        ERROR_CODES.INVALID_CONFIG
+      );
     }
 
-    throw new AppError(
-      `No configured AI provider available for vector embeddings. Errors: ${errors.map(e => e.error).join(', ')}`,
-      500,
-      ERROR_CODES.INVALID_CONFIG
-    );
+    try {
+      const result = await Promise.race([
+        this.workersAi.generateEmbedding(text),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error('Timeout after 15s for Workers AI embedding generation')), 15000)
+        )
+      ]);
+
+      return result;
+    } catch (err) {
+      const errorMsg = err instanceof Error ? err.message : String(err);
+      throw new AppError(
+        `Workers AI embedding generation failed: ${errorMsg}`,
+        502,
+        ERROR_CODES.WORKERS_AI_ERROR,
+        { originalError: errorMsg }
+      );
+    }
   }
 }

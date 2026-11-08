@@ -2,8 +2,6 @@ import { z } from 'zod';
 import type { Env } from '../types';
 import {
   DEFAULT_PRIMARY_PROVIDER,
-  DEFAULT_OPENAI_MODEL,
-  DEFAULT_GEMINI_MODEL,
   DEFAULT_WORKERS_AI_MODEL,
   DEFAULT_AI_TEMPERATURE,
   DEFAULT_MAX_TOKENS,
@@ -16,12 +14,8 @@ const envSchema = z.object({
   TELEGRAM_BOT_TOKEN: z.string().min(1, 'TELEGRAM_BOT_TOKEN is required'),
   TELEGRAM_WEBHOOK_SECRET: z.string().min(1, 'TELEGRAM_WEBHOOK_SECRET is required'),
   ALLOWED_TELEGRAM_USER_IDS: z.string().optional().default(''),
-  PRIMARY_AI_PROVIDER: z.enum(['gemini', 'workers-ai', 'openai']).default(DEFAULT_PRIMARY_PROVIDER as 'gemini' | 'workers-ai' | 'openai'),
-  GEMINI_API_KEY: z.string().optional(),
-  GEMINI_MODEL: z.string().default(DEFAULT_GEMINI_MODEL),
+  PRIMARY_AI_PROVIDER: z.string().default(DEFAULT_PRIMARY_PROVIDER),
   WORKERS_AI_MODEL: z.string().default(DEFAULT_WORKERS_AI_MODEL),
-  OPENAI_API_KEY: z.string().optional(),
-  OPENAI_MODEL: z.string().default(DEFAULT_OPENAI_MODEL),
   AI_TEMPERATURE: z.coerce.number().min(0).max(2).default(DEFAULT_AI_TEMPERATURE),
   MAX_TOKENS: z.coerce.number().min(1).default(DEFAULT_MAX_TOKENS),
   RATE_LIMIT_PER_MINUTE: z.coerce.number().min(1).default(DEFAULT_RATE_LIMIT),

@@ -9,13 +9,15 @@ export const DEFAULT_BOT_NAME = 'Piyush AI Assistant';
 export const DEFAULT_BOT_USERNAME = 'ppiyushhhhBot';
 export const DEFAULT_ALLOWED_USER_ID = '9084869490';
 
-// Primary AI provider is Gemini; Workers AI is the edge-native zero-credential secondary provider; OpenAI is optional tertiary
-export const DEFAULT_PRIMARY_PROVIDER = 'gemini';
-export const DEFAULT_GEMINI_MODEL = 'gemini-3.8-flash';
-export const DEFAULT_GEMINI_EMBEDDING_MODEL = 'gemini-embedding-2';
+// Cloudflare Workers AI is the primary and sole AI provider running on edge compute (Zero external API keys required)
+export const DEFAULT_PRIMARY_PROVIDER = 'workers-ai';
 export const DEFAULT_WORKERS_AI_MODEL = '@cf/meta/llama-3.3-70b-instruct-fp8-fast';
+export const DEFAULT_WORKERS_AI_FALLBACK_MODELS = [
+  '@cf/meta/llama-3.2-3b-instruct',
+  '@cf/meta/llama-3-8b-instruct'
+] as const;
 export const DEFAULT_WORKERS_AI_EMBEDDING_MODEL = '@cf/baai/bge-base-en-v1.5';
-export const DEFAULT_OPENAI_MODEL = 'gpt-4o-mini';
+export const EMBEDDING_DIMENSIONS = 768;
 
 export const DEFAULT_AI_TEMPERATURE = 0.7;
 export const DEFAULT_MAX_TOKENS = 1000;

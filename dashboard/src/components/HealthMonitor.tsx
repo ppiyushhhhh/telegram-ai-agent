@@ -21,6 +21,8 @@ export const HealthMonitor: React.FC<HealthMonitorProps> = ({ health, overview }
     return `${secs}s`;
   };
 
+  const workersAi = health?.checks.aiProviders.workersAi;
+
   return (
     <div>
       <div className="grid-cards">
@@ -73,44 +75,30 @@ export const HealthMonitor: React.FC<HealthMonitorProps> = ({ health, overview }
           </div>
         </div>
 
-        {/* AI Providers (Gemini Primary, Workers AI Secondary, OpenAI Optional) */}
+        {/* AI Provider (Cloudflare Workers AI Sole Provider) */}
         <div className="card">
           <div className="card-title">
-            <span>AI Engine ({health?.checks.aiProviders.primary === 'workers-ai' ? 'Workers AI' : health?.checks.aiProviders.primary === 'openai' ? 'OpenAI' : 'Gemini'})</span>
+            <span>AI Engine (Workers AI)</span>
             <Cpu size={18} color="var(--accent-purple)" />
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '6px', flexWrap: 'wrap' }}>
             <span
               className={`badge ${
-                health?.checks.aiProviders.gemini?.status === 'configured' ? 'badge-green' : 'badge-red'
+                workersAi?.status === 'configured' ? 'badge-blue' : 'badge-amber'
               }`}
             >
-              Gemini (Primary): {health?.checks.aiProviders.gemini?.status === 'configured' ? 'READY' : 'MISSING KEY'}
-            </span>
-            <span
-              className={`badge ${
-                health?.checks.aiProviders.workersAi?.status === 'configured' ? 'badge-blue' : 'badge-amber'
-              }`}
-            >
-              Workers AI (Secondary): {health?.checks.aiProviders.workersAi?.status === 'configured' ? 'READY' : 'OFF'}
-            </span>
-            <span
-              className={`badge ${
-                health?.checks.aiProviders.openai?.status === 'configured' ? 'badge-green' : 'badge-amber'
-              }`}
-            >
-              OpenAI (Optional): {health?.checks.aiProviders.openai?.status === 'configured' ? 'READY' : 'UNCONFIGURED'}
+              Workers AI (Sole): {workersAi?.status === 'configured' ? 'ACTIVE &amp; READY' : 'BINDING MISSING'}
             </span>
           </div>
           <div className="card-subtitle">
-            Primary: {health?.checks.aiProviders.gemini?.model || 'gemini-3.8-flash'} &bull; Secondary: {health?.checks.aiProviders.workersAi?.model || '@cf/meta/llama-3.3-70b-instruct'}
+            Model: {workersAi?.model || '@cf/meta/llama-3.3-70b-instruct-fp8-fast'}
           </div>
         </div>
 
         {/* Telegram Bot API */}
         <div className="card">
           <div className="card-title">
-            <span>Telegram Bot (@{health?.checks.telegram.botUsername || overview?.botUsername || 'PiyushPersonalAssistantBot'})</span>
+            <span>Telegram Bot (@{health?.checks.telegram.botUsername || overview?.botUsername || 'ppiyushhhhBot'})</span>
             <Send size={18} color="var(--accent-blue)" />
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '6px' }}>
@@ -160,7 +148,7 @@ export const HealthMonitor: React.FC<HealthMonitorProps> = ({ health, overview }
             </div>
             <div className="card-value">{overview.usage?.totalTokens?.toLocaleString() || 0} tokens</div>
             <div className="card-subtitle">
-              ${(overview.usage?.totalCostUsd || 0).toFixed(5)} total API cost
+              ${(overview.usage?.totalCostUsd || 0).toFixed(5)} total compute cost
             </div>
           </div>
 

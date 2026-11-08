@@ -10,10 +10,8 @@
   "vars": {
     "APP_ENV": "development",
     "LOG_LEVEL": "debug",
-    "PRIMARY_AI_PROVIDER": "gemini",
-    "GEMINI_MODEL": "gemini-3.8-flash",
+    "PRIMARY_AI_PROVIDER": "workers-ai",
     "WORKERS_AI_MODEL": "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
-    "OPENAI_MODEL": "gpt-4o-mini",
     "AI_TEMPERATURE": "0.7",
     "MAX_TOKENS": "1000",
     "RATE_LIMIT_PER_MINUTE": "20"
@@ -65,10 +63,8 @@
       "vars": {
         "APP_ENV": "uat",
         "LOG_LEVEL": "info",
-        "PRIMARY_AI_PROVIDER": "gemini",
-        "GEMINI_MODEL": "gemini-3.8-flash",
+        "PRIMARY_AI_PROVIDER": "workers-ai",
         "WORKERS_AI_MODEL": "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
-        "OPENAI_MODEL": "gpt-4o-mini",
         "AI_TEMPERATURE": "0.7",
         "MAX_TOKENS": "1000",
         "RATE_LIMIT_PER_MINUTE": "30",
@@ -116,11 +112,14 @@
       "vars": {
         "APP_ENV": "production",
         "LOG_LEVEL": "warn",
-        "PRIMARY_AI_PROVIDER": "gemini",
-        "GEMINI_MODEL": "gemini-3.8-flash",
+        "PRIMARY_AI_PROVIDER": "workers-ai",
+        "WORKERS_AI_MODEL": "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
         "AI_TEMPERATURE": "0.7",
         "MAX_TOKENS": "1500",
         "RATE_LIMIT_PER_MINUTE": "60"
+      },
+      "ai": {
+        "binding": "AI"
       },
       "d1_databases": [
         {

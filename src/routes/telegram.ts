@@ -9,6 +9,12 @@ import { SemanticMemoryService } from '../services/memory/semantic';
 import { DatabaseService } from '../services/db/client';
 import { estimateUsageCost } from '../services/ai/cost';
 import { getAllowedUserIds } from '../config/env';
+import {
+  DEFAULT_WORKERS_AI_MODEL,
+  DEFAULT_WORKERS_AI_FALLBACK_MODELS,
+  DEFAULT_WORKERS_AI_EMBEDDING_MODEL,
+  EMBEDDING_DIMENSIONS
+} from '../config/constants';
 
 export const telegramRouter = new Hono<{ Bindings: Env; Variables: AppVariables }>();
 
@@ -125,7 +131,7 @@ const handleTelegramUpdate = async (c: any) => {
   if (text === '/start') {
     const welcomeText =
       `👋 *Hello ${sender.first_name || 'there'}!*\n\n` +
-      `I am your private AI Agent running on Cloudflare Workers and powered by Google Gemini and Workers AI.\n\n` +
+      `I am your private AI Agent running on Cloudflare Workers and powered entirely by Cloudflare Workers AI.\n\n` +
       `*Commands:*\n` +
       `• \`/help\` - View commands and help guide\n` +
       `• \`/status\` - View system status, active model & usage\n` +
@@ -147,8 +153,9 @@ const handleTelegramUpdate = async (c: any) => {
       `• \`/new\` - Start a fresh conversation topic\n` +
       `• \`/clear\` - Clear context for current chat session\n\n` +
       `*Tips:*\n` +
-      `• You can ask complex programming questions, drafting, or analysis prompts.\n` +
-      `• Conversation context is maintained automatically.\n` +
+      `• Powered by Cloudflare Workers AI with zero external dependencies.\n` +
+      `• Automatic resilient failover across verified Llama models.\n` +
+      `• Conversation context is maintained automatically in D1.\n` +
       `• Long responses are cleanly split to comply with Telegram message limits.`;
 
     await sendSafeTelegramMessage(telegramClient, chatId, helpText, message.message_id);
@@ -157,12 +164,7 @@ const handleTelegramUpdate = async (c: any) => {
 
   // /status command (and /stats, /model aliases)
   if (text === '/status' || text === '/stats' || text === '/model') {
-    const primaryProvider = c.env.PRIMARY_AI_PROVIDER || 'gemini';
-    const activeModel = primaryProvider === 'gemini'
-      ? (c.env.GEMINI_MODEL || 'gemini-3.8-flash')
-      : primaryProvider === 'workers-ai'
-      ? (c.env.WORKERS_AI_MODEL || '@cf/meta/llama-3.3-70b-instruct')
-      : (c.env.OPENAI_MODEL || 'gpt-4o-mini');
+    const activeModel = c.env.WORKERS_AI_MODEL || DEFAULT_WORKERS_AI_MODEL;
     const envName = (c.env.APP_ENV || 'development').toUpperCase();
 
     let usageInfo = '• *Lifetime Messages:* 0\n• *Estimated Cost:* $0.00';
@@ -173,15 +175,17 @@ const handleTelegramUpdate = async (c: any) => {
         `• *Total Messages:* ${stats.messageCount}\n` +
         `• *Conversations:* ${stats.conversationCount}\n` +
         `• *Tokens Used:* ${usage.totalTokens.toLocaleString()}\n` +
-        `• *Estimated API Cost:* $${usage.totalCostUsd.toFixed(5)}`;
+        `• *Estimated Compute Cost:* $${usage.totalCostUsd.toFixed(5)}`;
     }
 
+    const fallbackList = DEFAULT_WORKERS_AI_FALLBACK_MODELS.map(m => `\`${m}\``).join(', ');
     const statusText =
       `⚡ *System Status & Telemetry*\n\n` +
       `• *Environment:* \`${envName}\`\n` +
-      `• *Primary AI Provider:* \`${primaryProvider.toUpperCase()}\` (Gemini)\n` +
-      `• *Secondary AI Provider:* \`WORKERS-AI\` (Cloudflare Edge)\n` +
+      `• *Primary AI Provider:* \`WORKERS-AI\` (Cloudflare Edge)\n` +
       `• *Active Model:* \`${activeModel}\`\n` +
+      `• *Fallback Models:* ${fallbackList}\n` +
+      `• *Embedding Model:* \`${DEFAULT_WORKERS_AI_EMBEDDING_MODEL}\` (${EMBEDDING_DIMENSIONS} dims)\n` +
       `• *D1 Database:* \`ONLINE\`\n\n` +
       `📊 *Your Account Usage:*\n${usageInfo}`;
 
@@ -191,12 +195,7 @@ const handleTelegramUpdate = async (c: any) => {
 
   // /new command (Starts a brand new conversation session)
   if (text === '/new') {
-    const primaryProvider = c.env.PRIMARY_AI_PROVIDER || 'gemini';
-    const activeModel = primaryProvider === 'gemini'
-      ? (c.env.GEMINI_MODEL || 'gemini-3.8-flash')
-      : primaryProvider === 'workers-ai'
-      ? (c.env.WORKERS_AI_MODEL || '@cf/meta/llama-3.3-70b-instruct')
-      : (c.env.OPENAI_MODEL || 'gpt-4o-mini');
+    const activeModel = c.env.WORKERS_AI_MODEL || DEFAULT_WORKERS_AI_MODEL;
     if (dbService) {
       await dbService.createNewConversation(chatId, sender.id, activeModel);
     }
@@ -230,12 +229,7 @@ const handleTelegramUpdate = async (c: any) => {
   try {
     const aiService = new UnifiedAIService(c.env);
     const memoryService = new SemanticMemoryService(c.env, aiService);
-    const primaryProvider = c.env.PRIMARY_AI_PROVIDER || 'gemini';
-    const activeModel = primaryProvider === 'gemini'
-      ? (c.env.GEMINI_MODEL || 'gemini-3.8-flash')
-      : primaryProvider === 'workers-ai'
-      ? (c.env.WORKERS_AI_MODEL || '@cf/meta/llama-3.3-70b-instruct')
-      : (c.env.OPENAI_MODEL || 'gpt-4o-mini');
+    const activeModel = c.env.WORKERS_AI_MODEL || DEFAULT_WORKERS_AI_MODEL;
 
     let conversationId = `chat_${chatId}`;
     let systemInstruction =

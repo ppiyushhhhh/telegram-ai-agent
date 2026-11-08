@@ -8,12 +8,12 @@
 # 3. DO NOT commit .dev.vars to Git (it is ignored by default in .gitignore).
 #
 # FOR UAT / LIVE ENVIRONMENTS:
-# Never commit secrets to repository or wrangler.jsonc. Instead set them using:
+# Set secrets using:
 #    npx wrangler secret put TELEGRAM_BOT_TOKEN --env uat
 #    npx wrangler secret put TELEGRAM_WEBHOOK_SECRET --env uat
-#    npx wrangler secret put OPENAI_API_KEY --env uat
-#    npx wrangler secret put GEMINI_API_KEY --env uat
 #    npx wrangler secret put ADMIN_API_KEY --env uat
+#
+# Note: Cloudflare Workers AI runs natively via bindings. Zero external AI API keys needed.
 # ==============================================================================
 
 # Application environment ('development', 'uat', 'production')
@@ -29,19 +29,12 @@ TELEGRAM_BOT_TOKEN=123456789:ABCdefGhIJKlmNoPQRsTUVwxyZ_EXAMPLE
 # Generate a random 32+ character hex or alphanumeric string
 TELEGRAM_WEBHOOK_SECRET=replace_with_a_secure_random_token_min_16_chars
 
-# AI Provider Selection: 'gemini' (primary) | 'workers-ai' (secondary) | 'openai' (optional)
-PRIMARY_AI_PROVIDER=gemini
+# AI Provider: Cloudflare Workers AI is the sole provider
+PRIMARY_AI_PROVIDER=workers-ai
 
-# Google Gemini API Configuration (Primary Provider)
-GEMINI_API_KEY=AIzaSyExample1234567890abcdefghijklmnopqrstuvwxyz
-GEMINI_MODEL=gemini-3.8-flash
+# Cloudflare Workers AI Configuration (Serverless Edge AI - no API key needed)
+WORKERS_AI_MODEL=@cf/meta/llama-3.3-70b-instruct-fp8-fast
 
-# Cloudflare Workers AI Configuration (Secondary Edge-Native Provider - zero external API key needed)
-WORKERS_AI_MODEL=@cf/meta/llama-3.3-70b-instruct
-
-# OpenAI Configuration (Optional Tertiary Provider - only used if OPENAI_API_KEY is supplied)
-OPENAI_API_KEY=
-OPENAI_MODEL=gpt-4o-mini
 AI_TEMPERATURE=0.7
 MAX_TOKENS=1000
 
@@ -49,8 +42,5 @@ MAX_TOKENS=1000
 # Only approved Telegram user IDs can access the bot
 ALLOWED_TELEGRAM_USER_IDS=9084869490
 
-# Bot public username (without @ symbol)
-TELEGRAM_BOT_USERNAME=PiyushPersonalAssistantBot
-
-# Internal Admin API Key for protected endpoints (dashboard / management)
-ADMIN_API_KEY=change_me_to_a_secure_admin_key_for_internal_api
+# Admin Dashboard API Key for authentication
+ADMIN_API_KEY=replace_with_a_secure_admin_key

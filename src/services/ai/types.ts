@@ -16,7 +16,7 @@ export interface CompletionOptions {
 
 export interface CompletionResult {
   text: string;
-  provider: 'gemini' | 'workers-ai' | 'openai';
+  provider: 'workers-ai';
   model: string;
   usage?: {
     promptTokens?: number;
@@ -28,11 +28,11 @@ export interface CompletionResult {
 export interface EmbeddingResult {
   values: number[];
   dimensions: number;
-  provider: 'gemini' | 'workers-ai' | 'openai';
+  provider: 'workers-ai';
 }
 
 export interface IAIProvider {
-  readonly name: 'gemini' | 'workers-ai' | 'openai';
+  readonly name: 'workers-ai';
   isConfigured(): boolean;
   generateCompletion(messages: AIMessage[], options?: CompletionOptions): Promise<CompletionResult>;
   generateEmbedding(text: string): Promise<EmbeddingResult>;

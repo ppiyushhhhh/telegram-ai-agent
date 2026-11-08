@@ -28,10 +28,14 @@ export interface HealthStatus {
     database: { status: 'ok' | 'failed' | 'not_configured'; latencyMs?: number; message?: string };
     telegram: { status: 'configured' | 'missing_token' | 'missing_secret'; botUsername?: string };
     aiProviders: {
-      primary: 'gemini' | 'workers-ai' | 'openai';
-      gemini: { status: 'configured' | 'not_configured'; model: string };
-      workersAi: { status: 'configured' | 'not_configured'; model: string };
-      openai: { status: 'configured' | 'not_configured'; model: string };
+      primary: 'workers-ai';
+      workersAi: {
+        status: 'configured' | 'not_configured';
+        model: string;
+        fallbackModels?: string[];
+        embeddingModel?: string;
+        embeddingDimensions?: number;
+      };
     };
     storage: {
       r2: 'bound' | 'not_bound';

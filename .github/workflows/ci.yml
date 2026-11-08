@@ -26,5 +26,8 @@ jobs:
       - name: TypeScript Check
         run: npm run typecheck
 
+      - name: Run Test Suite
+        run: npm test
+
       - name: Dry Run Build
         run: npm run build

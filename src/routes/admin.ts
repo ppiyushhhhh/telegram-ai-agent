@@ -3,7 +3,14 @@ import type { Env, AppVariables } from '../types';
 import { adminAuthMiddleware } from '../middleware/admin-auth';
 import { DatabaseService } from '../services/db/client';
 import { TelegramClient } from '../services/telegram/client';
-import { APP_VERSION, DEFAULT_BOT_USERNAME } from '../config/constants';
+import {
+  APP_VERSION,
+  DEFAULT_BOT_USERNAME,
+  DEFAULT_WORKERS_AI_MODEL,
+  DEFAULT_WORKERS_AI_FALLBACK_MODELS,
+  DEFAULT_WORKERS_AI_EMBEDDING_MODEL,
+  EMBEDDING_DIMENSIONS
+} from '../config/constants';
 
 export const adminRouter = new Hono<{ Bindings: Env; Variables: AppVariables }>();
 
@@ -28,13 +35,8 @@ adminRouter.get('/overview', async (c) => {
       : { totalTokens: 0, totalCostUsd: 0 }
   ]);
 
-  const primaryProvider = c.env.PRIMARY_AI_PROVIDER || 'gemini';
-  const activeModel = primaryProvider === 'gemini'
-    ? (c.env.GEMINI_MODEL || 'gemini-3.8-flash')
-    : primaryProvider === 'workers-ai'
-    ? (c.env.WORKERS_AI_MODEL || '@cf/meta/llama-3.3-70b-instruct')
-    : (c.env.OPENAI_MODEL || 'gpt-4o-mini');
-
+  const primaryProvider = 'workers-ai';
+  const activeModel = c.env.WORKERS_AI_MODEL || DEFAULT_WORKERS_AI_MODEL;
   const botUsername = c.env.TELEGRAM_BOT_USERNAME || DEFAULT_BOT_USERNAME;
 
   return c.json({
@@ -47,6 +49,7 @@ adminRouter.get('/overview', async (c) => {
       stats,
       usage,
       model: activeModel,
+      fallbackModels: DEFAULT_WORKERS_AI_FALLBACK_MODELS,
       uptimeSeconds: Math.floor(performance.now() / 1000)
     }
   });
@@ -126,12 +129,8 @@ adminRouter.get('/logs', async (c) => {
 
 // 5. Configuration & Model Settings
 adminRouter.get('/config', (c) => {
-  const primaryProvider = c.env.PRIMARY_AI_PROVIDER || 'gemini';
-  const activeModel = primaryProvider === 'gemini'
-    ? (c.env.GEMINI_MODEL || 'gemini-3.8-flash')
-    : primaryProvider === 'workers-ai'
-    ? (c.env.WORKERS_AI_MODEL || '@cf/meta/llama-3.3-70b-instruct')
-    : (c.env.OPENAI_MODEL || 'gpt-4o-mini');
+  const primaryProvider = 'workers-ai';
+  const activeModel = c.env.WORKERS_AI_MODEL || DEFAULT_WORKERS_AI_MODEL;
 
   return c.json({
     success: true,
@@ -139,6 +138,9 @@ adminRouter.get('/config', (c) => {
       environment: c.env.APP_ENV || 'development',
       primaryProvider,
       model: activeModel,
+      fallbackModels: DEFAULT_WORKERS_AI_FALLBACK_MODELS,
+      embeddingModel: DEFAULT_WORKERS_AI_EMBEDDING_MODEL,
+      embeddingDimensions: EMBEDDING_DIMENSIONS,
       temperature: c.env.AI_TEMPERATURE ? parseFloat(c.env.AI_TEMPERATURE) : 0.7,
       maxTokens: c.env.MAX_TOKENS ? parseInt(c.env.MAX_TOKENS, 10) : 1000,
       rateLimit: c.env.RATE_LIMIT_PER_MINUTE ? parseInt(c.env.RATE_LIMIT_PER_MINUTE, 10) : 30

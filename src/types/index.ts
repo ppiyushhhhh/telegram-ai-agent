@@ -33,19 +33,10 @@ export interface Env {
   TELEGRAM_BOT_USERNAME?: string;
   ALLOWED_TELEGRAM_USER_IDS?: string;
 
-  // AI Provider Selection: 'gemini' (primary) | 'workers-ai' (secondary) | 'openai' (optional)
-  PRIMARY_AI_PROVIDER?: 'gemini' | 'workers-ai' | 'openai';
-
-  // Gemini Configuration (Primary Provider)
-  GEMINI_API_KEY?: string;
-  GEMINI_MODEL?: string;
-
-  // Cloudflare Workers AI Configuration (Secondary / Fallback Provider)
+  // AI Provider: Cloudflare Workers AI is the primary and sole engine (zero external API keys)
+  PRIMARY_AI_PROVIDER?: string;
   WORKERS_AI_MODEL?: string;
-
-  // OpenAI Configuration (Optional Tertiary Provider)
-  OPENAI_API_KEY?: string;
-  OPENAI_MODEL?: string;
+  WORKERS_AI_FALLBACK_MODELS?: string;
 
   // Model parameters
   AI_TEMPERATURE?: string;
@@ -94,18 +85,13 @@ export interface HealthCheckData {
       botUsername?: string;
     };
     aiProviders: {
-      primary: 'gemini' | 'workers-ai' | 'openai';
-      gemini: {
-        status: 'configured' | 'not_configured';
-        model: string;
-      };
+      primary: 'workers-ai';
       workersAi: {
         status: 'configured' | 'not_configured';
         model: string;
-      };
-      openai: {
-        status: 'configured' | 'not_configured';
-        model: string;
+        fallbackModels: string[];
+        embeddingModel: string;
+        embeddingDimensions: number;
       };
     };
     storage: {

@@ -20,6 +20,10 @@ export class WorkersAIProvider implements IAIProvider {
     return Boolean(this.aiBinding && typeof this.aiBinding.run === 'function');
   }
 
+  public getActiveModel(): string {
+    return this.defaultModel || DEFAULT_WORKERS_AI_MODEL;
+  }
+
   public async generateCompletion(
     messages: AIMessage[],
     options?: CompletionOptions

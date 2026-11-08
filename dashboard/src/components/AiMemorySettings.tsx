@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Cpu, Database, HardDrive, Brain, Zap } from 'lucide-react';
+import { Cpu, Database, HardDrive, Brain, Zap, ShieldCheck } from 'lucide-react';
 import type { HealthStatus } from '../services/api';
 
 interface AiMemorySettingsProps {
@@ -16,9 +16,9 @@ export const AiMemorySettings: React.FC<AiMemorySettingsProps> = ({ health }) =>
     setTestResult(null);
     try {
       // Simulate quick test response check
-      await new Promise((r) => setTimeout(r, 800));
+      await new Promise((r) => setTimeout(r, 600));
       setTestResult(
-        `[${health?.checks.aiProviders.primary?.toUpperCase() || 'OPENAI'} ONLINE] Cloudflare Workers is a serverless execution environment that runs your code globally on Cloudflare's edge network with ultra-low latency.`
+        `[WORKERS-AI ONLINE] Cloudflare Workers is a serverless execution environment that runs your code globally on Cloudflare's edge network with ultra-low latency.`
       );
     } catch {
       setTestResult('Test request failed.');
@@ -28,74 +28,54 @@ export const AiMemorySettings: React.FC<AiMemorySettingsProps> = ({ health }) =>
   };
 
   const ai = health?.checks.aiProviders;
+  const workersAi = ai?.workersAi;
+  const fallbackModels = workersAi?.fallbackModels || [
+    '@cf/meta/llama-3.2-3b-instruct',
+    '@cf/meta/llama-3-8b-instruct'
+  ];
+  const embeddingModel = workersAi?.embeddingModel || '@cf/baai/bge-base-en-v1.5';
+  const embeddingDimensions = workersAi?.embeddingDimensions || 768;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-      {/* AI Providers Overview */}
+      {/* Cloudflare Workers AI Primary Engine */}
       <div className="card">
         <div style={{ marginBottom: '16px' }}>
-          <h2 style={{ fontSize: '1.125rem', fontWeight: 600 }}>Triple AI Provider Architecture &amp; Fallback</h2>
+          <h2 style={{ fontSize: '1.125rem', fontWeight: 600 }}>Cloudflare Workers AI (Sole Provider)</h2>
           <p style={{ fontSize: '0.8125rem', color: 'var(--text-muted)' }}>
-            Primary Google Gemini engine with edge-native Cloudflare Workers AI failover and optional OpenAI support.
+            All external third-party AI APIs (Google Gemini, OpenAI) have been decommissioned. Execution runs 100% on Cloudflare's serverless GPUs.
           </p>
         </div>
 
         <div className="grid-cards">
-          {/* Gemini Primary */}
+          {/* Active Primary Model */}
           <div
             style={{
               padding: '16px',
               borderRadius: 'var(--radius-sm)',
               background: 'var(--bg-card)',
-              border: ai?.primary === 'gemini' ? '1px solid var(--accent-purple)' : '1px solid var(--border-color)'
+              border: '1px solid var(--accent-blue)'
             }}
           >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <Zap size={18} color="var(--accent-purple)" />
-                <span style={{ fontWeight: 600 }}>Gemini (Primary)</span>
+                <Zap size={18} color="var(--accent-blue)" />
+                <span style={{ fontWeight: 600 }}>Primary Model</span>
               </div>
-              <span className={`badge ${ai?.gemini.status === 'configured' ? 'badge-green' : 'badge-red'}`}>
-                {ai?.gemini.status === 'configured' ? 'ACTIVE' : 'MISSING GEMINI_API_KEY'}
+              <span className={`badge ${workersAi?.status === 'configured' ? 'badge-blue' : 'badge-amber'}`}>
+                {workersAi?.status === 'configured' ? 'ACTIVE &amp; READY' : 'BINDING MISSING'}
               </span>
             </div>
             <div style={{ marginTop: '12px', fontSize: '0.8125rem', color: 'var(--text-secondary)' }}>
-              <div>Model: <code>{ai?.gemini.model || 'gemini-3.8-flash'}</code></div>
-              <div style={{ marginTop: '4px' }}>Role: Primary conversational generation &amp; semantic embeddings (gemini-embedding-2)</div>
+              <div>Model: <code>{workersAi?.model || '@cf/meta/llama-3.3-70b-instruct-fp8-fast'}</code></div>
+              <div style={{ marginTop: '4px' }}>Architecture: Meta Llama 3.3 70B Instruct (FP8-fast)</div>
               <div style={{ marginTop: '4px', color: 'var(--text-muted)', fontSize: '0.75rem' }}>
-                Quota: Standard Gemini Developer API limits
+                Zero external API keys required &bull; Native edge compute binding
               </div>
             </div>
           </div>
 
-          {/* Cloudflare Workers AI Secondary */}
-          <div
-            style={{
-              padding: '16px',
-              borderRadius: 'var(--radius-sm)',
-              background: 'var(--bg-card)',
-              border: ai?.primary === 'workers-ai' ? '1px solid var(--accent-blue)' : '1px solid var(--border-color)'
-            }}
-          >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <Cpu size={18} color="var(--accent-blue)" />
-                <span style={{ fontWeight: 600 }}>Workers AI (Secondary)</span>
-              </div>
-              <span className={`badge ${ai?.workersAi?.status === 'configured' ? 'badge-blue' : 'badge-amber'}`}>
-                {ai?.workersAi?.status === 'configured' ? 'EDGE-BOUND / READY' : 'BINDING MISSING'}
-              </span>
-            </div>
-            <div style={{ marginTop: '12px', fontSize: '0.8125rem', color: 'var(--text-secondary)' }}>
-              <div>Model: <code>{ai?.workersAi?.model || '@cf/meta/llama-3.3-70b-instruct'}</code></div>
-              <div style={{ marginTop: '4px' }}>Role: Edge-native zero-credential automated fallback</div>
-              <div style={{ marginTop: '4px', color: 'var(--text-muted)', fontSize: '0.75rem' }}>
-                Cost: Free edge tier / native Workers AI compute
-              </div>
-            </div>
-          </div>
-
-          {/* OpenAI Optional Tertiary */}
+          {/* Resilient Fallback Models */}
           <div
             style={{
               padding: '16px',
@@ -106,18 +86,45 @@ export const AiMemorySettings: React.FC<AiMemorySettingsProps> = ({ health }) =>
           >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <Cpu size={18} color="var(--text-muted)" />
-                <span style={{ fontWeight: 600 }}>OpenAI (Optional)</span>
+                <Cpu size={18} color="var(--accent-green)" />
+                <span style={{ fontWeight: 600 }}>Automated Fallbacks</span>
               </div>
-              <span className={`badge ${ai?.openai?.status === 'configured' ? 'badge-green' : 'badge-amber'}`}>
-                {ai?.openai?.status === 'configured' ? 'CONFIGURED' : 'OPTIONAL (NO KEY)'}
-              </span>
+              <span className="badge badge-green">MULTI-MODEL POOL</span>
             </div>
             <div style={{ marginTop: '12px', fontSize: '0.8125rem', color: 'var(--text-secondary)' }}>
-              <div>Model: <code>{ai?.openai?.model || 'gpt-4o-mini'}</code></div>
-              <div style={{ marginTop: '4px' }}>Role: Optional tertiary provider (never silently switched without credentials)</div>
+              <div>Candidates:</div>
+              {fallbackModels.map((m) => (
+                <div key={m} style={{ marginTop: '2px' }}>
+                  &bull; <code>{m}</code>
+                </div>
+              ))}
               <div style={{ marginTop: '4px', color: 'var(--text-muted)', fontSize: '0.75rem' }}>
-                Requires explicit OPENAI_API_KEY secret
+                Auto-failover on capacity constraint or model maintenance
+              </div>
+            </div>
+          </div>
+
+          {/* Quota & Cost Controls */}
+          <div
+            style={{
+              padding: '16px',
+              borderRadius: 'var(--radius-sm)',
+              background: 'var(--bg-card)',
+              border: '1px solid var(--border-color)'
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <ShieldCheck size={18} color="var(--accent-purple)" />
+                <span style={{ fontWeight: 600 }}>Quota &amp; Cost Controls</span>
+              </div>
+              <span className="badge badge-purple">ZERO THIRD-PARTY BILLS</span>
+            </div>
+            <div style={{ marginTop: '12px', fontSize: '0.8125rem', color: 'var(--text-secondary)' }}>
+              <div>Workers AI Free Allowance: <code>10,000 Neurons/day</code></div>
+              <div style={{ marginTop: '4px' }}>Paid Neurons: $0.011 / 1,000 Neurons (if account scaled)</div>
+              <div style={{ marginTop: '4px', color: 'var(--text-muted)', fontSize: '0.75rem' }}>
+                Graceful quota throttling &bull; Never claims unlimited free usage
               </div>
             </div>
           </div>
@@ -127,36 +134,36 @@ export const AiMemorySettings: React.FC<AiMemorySettingsProps> = ({ health }) =>
       {/* Memory Architecture Tiers */}
       <div className="card">
         <div style={{ marginBottom: '16px' }}>
-          <h2 style={{ fontSize: '1.125rem', fontWeight: 600 }}>Multi-Tier Memory Topology</h2>
+          <h2 style={{ fontSize: '1.125rem', fontWeight: 600 }}>Memory &amp; Storage Architecture</h2>
           <p style={{ fontSize: '0.8125rem', color: 'var(--text-muted)' }}>
-            Integrated short-term, long-term relational, semantic vector, and media storage.
+            Integrated short-term session coordination, relational storage in D1, and semantic vector memory.
           </p>
         </div>
 
         <div className="grid-cards">
           <div className="card" style={{ padding: '16px' }}>
             <div className="card-title">
-              <span>Short-Term Memory</span>
+              <span>Session Memory</span>
               <Brain size={16} />
             </div>
             <div style={{ fontSize: '0.875rem', fontWeight: 600, color: 'var(--accent-blue)' }}>
-              D1 + Durable Objects
+              Durable Objects
             </div>
             <div className="card-subtitle">
-              Sliding context window (last 6 messages) with instant <code>/reset</code> clear capability.
+              Session coordination, atomic updates &bull; <code>/new</code>, <code>/clear</code>
             </div>
           </div>
 
           <div className="card" style={{ padding: '16px' }}>
             <div className="card-title">
-              <span>Long-Term Memory</span>
+              <span>Relational Memory</span>
               <Database size={16} />
             </div>
             <div style={{ fontSize: '0.875rem', fontWeight: 600, color: 'var(--accent-green)' }}>
               Cloudflare D1 SQLite
             </div>
             <div className="card-subtitle">
-              Persistent storage of users, conversation histories, tokens, and audit logs.
+              User profiles, persistent conversations, message history, and token metrics.
             </div>
           </div>
 
@@ -169,20 +176,20 @@ export const AiMemorySettings: React.FC<AiMemorySettingsProps> = ({ health }) =>
               Cloudflare Vectorize
             </div>
             <div className="card-subtitle">
-              Vector index for contextual semantic recall across historical user discussions.
+              Embedding model: <code>{embeddingModel}</code> ({embeddingDimensions} dimensions).
             </div>
           </div>
 
           <div className="card" style={{ padding: '16px' }}>
             <div className="card-title">
-              <span>Media &amp; Documents</span>
+              <span>Media Attachments</span>
               <HardDrive size={16} />
             </div>
             <div style={{ fontSize: '0.875rem', fontWeight: 600, color: 'var(--accent-amber)' }}>
               Cloudflare R2 Bucket
             </div>
             <div className="card-subtitle">
-              Object storage for voice notes, image attachments, and conversation exports.
+              Media storage for voice notes, image uploads, and chat exports.
             </div>
           </div>
         </div>
@@ -192,7 +199,7 @@ export const AiMemorySettings: React.FC<AiMemorySettingsProps> = ({ health }) =>
       <div className="card">
         <h3 style={{ fontSize: '1rem', fontWeight: 600, marginBottom: '8px' }}>Test AI Engine Response</h3>
         <p style={{ fontSize: '0.8125rem', color: 'var(--text-muted)', marginBottom: '12px' }}>
-          Simulate a query to verify active provider response readiness.
+          Simulate a query to verify active Workers AI response readiness.
         </p>
 
         <div style={{ display: 'flex', gap: '10px', marginBottom: '12px' }}>

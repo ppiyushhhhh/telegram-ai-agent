@@ -2,10 +2,10 @@ import { Hono } from 'hono';
 import type { Env, AppVariables, ApiResponse, HealthCheckData } from '../types';
 import {
   APP_VERSION,
-  DEFAULT_PRIMARY_PROVIDER,
-  DEFAULT_GEMINI_MODEL,
   DEFAULT_WORKERS_AI_MODEL,
-  DEFAULT_OPENAI_MODEL,
+  DEFAULT_WORKERS_AI_FALLBACK_MODELS,
+  DEFAULT_WORKERS_AI_EMBEDDING_MODEL,
+  EMBEDDING_DIMENSIONS,
   DEFAULT_BOT_USERNAME
 } from '../config/constants';
 
@@ -43,15 +43,8 @@ healthRouter.get('/', async (c) => {
     telegramStatus = 'missing_secret';
   }
 
-  // 3. Check AI Providers (Gemini Primary, Workers AI Secondary, OpenAI Optional)
-  const primaryProvider = (c.env.PRIMARY_AI_PROVIDER || DEFAULT_PRIMARY_PROVIDER) as 'gemini' | 'workers-ai' | 'openai';
-  const geminiStatus: 'configured' | 'not_configured' = Boolean(c.env.GEMINI_API_KEY && c.env.GEMINI_API_KEY.trim().length > 0)
-    ? 'configured'
-    : 'not_configured';
+  // 3. Check Cloudflare Workers AI (Primary and sole AI provider)
   const workersAiStatus: 'configured' | 'not_configured' = Boolean(c.env.AI)
-    ? 'configured'
-    : 'not_configured';
-  const openaiStatus: 'configured' | 'not_configured' = Boolean(c.env.OPENAI_API_KEY && c.env.OPENAI_API_KEY.trim().length > 0)
     ? 'configured'
     : 'not_configured';
 
@@ -61,18 +54,8 @@ healthRouter.get('/', async (c) => {
   const queueStatus: 'bound' | 'not_bound' = c.env.TASK_QUEUE ? 'bound' : 'not_bound';
 
   // Determine overall status
-  let primaryAiReady = false;
-  if (primaryProvider === 'gemini') {
-    primaryAiReady = geminiStatus === 'configured';
-  } else if (primaryProvider === 'workers-ai') {
-    primaryAiReady = workersAiStatus === 'configured';
-  } else {
-    primaryAiReady = openaiStatus === 'configured';
-  }
-
-  const anyAiReady = geminiStatus === 'configured' || workersAiStatus === 'configured' || openaiStatus === 'configured';
-  const isHealthy = dbStatus === 'ok' && telegramStatus === 'configured' && primaryAiReady;
-  const isDegraded = (dbStatus === 'ok' || telegramStatus === 'configured') && anyAiReady;
+  const isHealthy = dbStatus === 'ok' && telegramStatus === 'configured' && workersAiStatus === 'configured';
+  const isDegraded = (dbStatus === 'ok' || telegramStatus === 'configured') && workersAiStatus === 'configured';
   const overallStatus: 'healthy' | 'degraded' | 'unhealthy' = isHealthy
     ? 'healthy'
     : isDegraded
@@ -96,18 +79,13 @@ healthRouter.get('/', async (c) => {
         botUsername: c.env.TELEGRAM_BOT_USERNAME || DEFAULT_BOT_USERNAME
       },
       aiProviders: {
-        primary: primaryProvider,
-        gemini: {
-          status: geminiStatus,
-          model: c.env.GEMINI_MODEL || DEFAULT_GEMINI_MODEL
-        },
+        primary: 'workers-ai',
         workersAi: {
           status: workersAiStatus,
-          model: c.env.WORKERS_AI_MODEL || DEFAULT_WORKERS_AI_MODEL
-        },
-        openai: {
-          status: openaiStatus,
-          model: c.env.OPENAI_MODEL || DEFAULT_OPENAI_MODEL
+          model: c.env.WORKERS_AI_MODEL || DEFAULT_WORKERS_AI_MODEL,
+          fallbackModels: [...DEFAULT_WORKERS_AI_FALLBACK_MODELS],
+          embeddingModel: DEFAULT_WORKERS_AI_EMBEDDING_MODEL,
+          embeddingDimensions: EMBEDDING_DIMENSIONS
         }
       },
       storage: {
