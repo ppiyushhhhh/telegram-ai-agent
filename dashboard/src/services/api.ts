@@ -156,4 +156,7 @@ export class DashboardApiClient {
   }
 }
 
-export const api = new DashboardApiClient();
+export const api = new DashboardApiClient(
+  localStorage.getItem('tg_api_url') || import.meta.env.VITE_API_URL || '',
+  localStorage.getItem('tg_admin_key') || ''
+);

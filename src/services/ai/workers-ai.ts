@@ -32,7 +32,9 @@ export class WorkersAIProvider implements IAIProvider {
       );
     }
 
-    const model = options?.model || this.defaultModel || DEFAULT_WORKERS_AI_MODEL;
+    const model = (options?.model && options.model.startsWith('@cf/'))
+      ? options.model
+      : (this.defaultModel || DEFAULT_WORKERS_AI_MODEL);
     const formattedMessages = messages.map(m => ({
       role: m.role,
       content: m.content

@@ -279,7 +279,6 @@ const handleTelegramUpdate = async (c: any) => {
 
     // Generate AI response
     const aiResult = await aiService.generateChatResponse(chatHistory, {
-      model: activeModel,
       temperature: c.env.AI_TEMPERATURE ? parseFloat(c.env.AI_TEMPERATURE) : 0.7,
       maxTokens: c.env.MAX_TOKENS ? parseInt(c.env.MAX_TOKENS, 10) : 1000
     });

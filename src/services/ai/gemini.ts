@@ -26,7 +26,9 @@ export class GeminiProvider implements IAIProvider {
       throw new AppError('Gemini API key is not configured', 500, ERROR_CODES.INVALID_CONFIG);
     }
 
-    const model = options?.model || this.defaultModel || DEFAULT_GEMINI_MODEL;
+    const model = (options?.model && options.model.startsWith('gemini'))
+      ? options.model
+      : (this.defaultModel || DEFAULT_GEMINI_MODEL);
     const url = `${this.baseUrl}/models/${model}:generateContent?key=${this.apiKey}`;
 
     // Separate system messages for Gemini's systemInstruction

@@ -55,7 +55,7 @@ export const Header: React.FC<HeaderProps> = ({
               Telegram AI Agent
             </h1>
             <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-              Cloudflare Workers &bull; OpenAI &bull; D1 Database
+              Cloudflare Workers &bull; Gemini &bull; Workers AI &bull; D1 Database
             </p>
           </div>
         </div>

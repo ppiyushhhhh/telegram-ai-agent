@@ -28,7 +28,9 @@ export class OpenAIProvider implements IAIProvider {
       throw new AppError('OpenAI API key is not configured', 500, ERROR_CODES.INVALID_CONFIG);
     }
 
-    const model = options?.model || this.defaultModel || DEFAULT_OPENAI_MODEL;
+    const model = (options?.model && !options.model.startsWith('@cf/') && !options.model.startsWith('gemini'))
+      ? options.model
+      : (this.defaultModel || DEFAULT_OPENAI_MODEL);
     const formattedMessages = messages.map(m => ({
       role: m.role,
       content: m.content
