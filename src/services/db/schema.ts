@@ -57,6 +57,17 @@ export interface DbAiUsage {
   created_at: string;
 }
 
+export interface DbReminder {
+  id: string;
+  user_id: number;
+  chat_id: number;
+  reminder_text: string;
+  remind_at: string;
+  is_sent: number;
+  created_at: string;
+  sent_at?: string | null;
+}
+
 export interface DbSystemSetting {
   key: string;
   value: string;

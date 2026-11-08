@@ -1,4 +1,4 @@
-import type { DbUser, DbConversation, DbMessage } from './schema';
+import type { DbUser, DbConversation, DbMessage, DbReminder } from './schema';
 import { AppError } from '../../middleware/error-handler';
 import { ERROR_CODES } from '../../config/constants';
 
@@ -339,5 +339,81 @@ export class DatabaseService {
       .bind(key)
       .first<{ value: string }>();
     return res?.value ?? null;
+  }
+
+  /**
+   * Creates a new scheduled reminder.
+   */
+  public async createReminder(data: {
+    userId: number;
+    chatId: number;
+    reminderText: string;
+    remindAt: string;
+  }): Promise<string> {
+    const id = crypto.randomUUID();
+    await this.db
+      .prepare(
+        `INSERT INTO reminders (id, user_id, chat_id, reminder_text, remind_at, is_sent)
+         VALUES (?, ?, ?, ?, ?, 0)`
+      )
+      .bind(id, data.userId, data.chatId, data.reminderText, data.remindAt)
+      .run();
+    return id;
+  }
+
+  /**
+   * Retrieves all due, unsent reminders (scheduled at or before current time).
+   */
+  public async getDueReminders(): Promise<DbReminder[]> {
+    const nowIso = new Date().toISOString();
+    const res = await this.db
+      .prepare(
+        `SELECT * FROM reminders
+         WHERE is_sent = 0 AND (remind_at <= ? OR remind_at <= datetime('now'))
+         ORDER BY remind_at ASC
+         LIMIT 25`
+      )
+      .bind(nowIso)
+      .all<DbReminder>();
+    return res.results || [];
+  }
+
+  /**
+   * Marks a reminder as successfully sent.
+   */
+  public async markReminderSent(id: string): Promise<void> {
+    await this.db
+      .prepare(
+        `UPDATE reminders
+         SET is_sent = 1, sent_at = datetime('now')
+         WHERE id = ?`
+      )
+      .bind(id)
+      .run();
+  }
+
+  /**
+   * Retrieves all pending reminders for a specific user.
+   */
+  public async getUserPendingReminders(userId: number): Promise<DbReminder[]> {
+    const res = await this.db
+      .prepare(
+        `SELECT * FROM reminders
+         WHERE user_id = ? AND is_sent = 0
+         ORDER BY remind_at ASC`
+      )
+      .bind(userId)
+      .all<DbReminder>();
+    return res.results || [];
+  }
+
+  /**
+   * Clears/cancels all pending reminders for a user.
+   */
+  public async clearUserReminders(userId: number): Promise<void> {
+    await this.db
+      .prepare('DELETE FROM reminders WHERE user_id = ? AND is_sent = 0')
+      .bind(userId)
+      .run();
   }
 }

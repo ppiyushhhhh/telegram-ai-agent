@@ -4,6 +4,7 @@ import { createApp } from '../src/app';
 import type { Env } from '../src/types';
 import { UnifiedAIService } from '../src/services/ai/unified';
 import { SemanticMemoryService } from '../src/services/memory/semantic';
+import { processDueReminders } from '../src/services/scheduler/reminder-processor';
 import {
   DEFAULT_WORKERS_AI_MODEL,
   DEFAULT_WORKERS_AI_FALLBACK_MODELS,
@@ -16,6 +17,7 @@ const usersMap = new Map<number, any>();
 const conversationsMap = new Map<number, any>();
 const messagesList: any[] = [];
 const aiUsageList: any[] = [];
+const remindersList: any[] = [];
 
 // In-memory mock Cloudflare D1 Database
 const mockD1: any = {
@@ -55,6 +57,13 @@ const mockD1: any = {
             if (query.includes('FROM conversations')) {
               return { results: Array.from(conversationsMap.values()) } as any;
             }
+            if (query.includes('FROM reminders')) {
+              if (query.includes('user_id = ?')) {
+                const uid = args[0];
+                return { results: remindersList.filter((r) => r.user_id === uid && r.is_sent === 0) } as any;
+              }
+              return { results: remindersList.filter((r) => r.is_sent === 0) } as any;
+            }
             return { results: [] } as any;
           },
           run: async () => {
@@ -76,6 +85,29 @@ const mockD1: any = {
             }
             if (query.includes('INSERT INTO ai_usage')) {
               aiUsageList.push({ id: args[0], user_id: args[1], total_tokens: args[7] });
+              return { success: true };
+            }
+            if (query.includes('INSERT INTO reminders')) {
+              remindersList.push({
+                id: args[0],
+                user_id: args[1],
+                chat_id: args[2],
+                reminder_text: args[3],
+                remind_at: args[4],
+                is_sent: 0
+              });
+              return { success: true };
+            }
+            if (query.includes('UPDATE reminders') && query.includes('is_sent = 1')) {
+              const r = remindersList.find((x) => x.id === args[0]);
+              if (r) r.is_sent = 1;
+              return { success: true };
+            }
+            if (query.includes('DELETE FROM reminders')) {
+              const uid = args[0];
+              const remaining = remindersList.filter((r) => r.user_id !== uid);
+              remindersList.length = 0;
+              remindersList.push(...remaining);
               return { success: true };
             }
             if (query.includes('DELETE FROM messages')) {
@@ -717,5 +749,112 @@ describe('Telegram AI Agent - Workers AI Integration Test Suite', () => {
     const body = await res.json<{ success: boolean; message: string }>();
     assert.equal(body.success, true);
     assert.match(body.message, /Concurrent request throttled/);
+  });
+
+  // 16. Scheduled Reminders & Proactive Notifications
+  it('POST /webhooks/telegram should schedule reminder via natural language prompt', async () => {
+    const res = await app.request(
+      '/webhooks/telegram',
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-telegram-bot-api-secret-token': 'test_webhook_secret_key_123'
+        },
+        body: JSON.stringify({
+          update_id: 992,
+          message: {
+            message_id: 302,
+            from: { id: 9084869490, first_name: 'Piyush', is_bot: false },
+            chat: { id: 9084869490, type: 'private' },
+            text: 'remind me to renew my netflix subscription in 30 minutes'
+          }
+        })
+      },
+      mockEnv
+    );
+
+    assert.equal(res.status, 200);
+    const body = await res.json<{ success: boolean; message: string }>();
+    assert.equal(body.success, true);
+    assert.equal(body.message, 'Handled reminder creation');
+    assert.equal(remindersList.length, 1);
+    assert.equal(remindersList[0].reminder_text, 'renew my netflix subscription');
+  });
+
+  it('POST /webhooks/telegram should list pending reminders via /reminders', async () => {
+    const res = await app.request(
+      '/webhooks/telegram',
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-telegram-bot-api-secret-token': 'test_webhook_secret_key_123'
+        },
+        body: JSON.stringify({
+          update_id: 993,
+          message: {
+            message_id: 303,
+            from: { id: 9084869490, first_name: 'Piyush', is_bot: false },
+            chat: { id: 9084869490, type: 'private' },
+            text: '/reminders'
+          }
+        })
+      },
+      mockEnv
+    );
+
+    assert.equal(res.status, 200);
+    const body = await res.json<{ success: boolean; message: string }>();
+    assert.equal(body.success, true);
+    assert.equal(body.message, 'Handled /reminders');
+  });
+
+  it('processDueReminders should dispatch due reminders and mark them as sent', async () => {
+    // Force reminder time into the past so it triggers as due
+    remindersList[0].remind_at = new Date(Date.now() - 60000).toISOString();
+
+    const result = await processDueReminders(mockEnv);
+    assert.equal(result.processed, 1);
+    assert.equal(result.sent, 1);
+    assert.equal(remindersList[0].is_sent, 1);
+  });
+
+  it('POST /webhooks/telegram should cancel reminders via /clearreminders', async () => {
+    // Add another pending reminder
+    remindersList.push({
+      id: 'test_rem_2',
+      user_id: 9084869490,
+      chat_id: 9084869490,
+      reminder_text: 'Buy groceries',
+      remind_at: new Date(Date.now() + 3600000).toISOString(),
+      is_sent: 0
+    });
+
+    const res = await app.request(
+      '/webhooks/telegram',
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-telegram-bot-api-secret-token': 'test_webhook_secret_key_123'
+        },
+        body: JSON.stringify({
+          update_id: 994,
+          message: {
+            message_id: 304,
+            from: { id: 9084869490, first_name: 'Piyush', is_bot: false },
+            chat: { id: 9084869490, type: 'private' },
+            text: '/clearreminders'
+          }
+        })
+      },
+      mockEnv
+    );
+
+    assert.equal(res.status, 200);
+    const body = await res.json<{ success: boolean; message: string }>();
+    assert.equal(body.success, true);
+    assert.equal(body.message, 'Handled /clearreminders');
   });
 });

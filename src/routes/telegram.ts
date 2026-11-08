@@ -15,6 +15,7 @@ import {
   DEFAULT_WORKERS_AI_EMBEDDING_MODEL,
   EMBEDDING_DIMENSIONS
 } from '../config/constants';
+import { parseReminderInput } from '../services/scheduler/reminder-parser';
 
 export const telegramRouter = new Hono<{ Bindings: Env; Variables: AppVariables }>();
 
@@ -151,10 +152,13 @@ const handleTelegramUpdate = async (c: any) => {
       `• \`/help\` - View this command guide\n` +
       `• \`/status\` - View active AI model, latency & token stats\n` +
       `• \`/new\` - Start a fresh conversation topic\n` +
-      `• \`/clear\` - Clear context for current chat session\n\n` +
+      `• \`/clear\` - Clear context for current chat session\n` +
+      `• \`/remind <time> <text>\` - Set a scheduled proactive reminder\n` +
+      `• \`/reminders\` - View all active scheduled reminders\n` +
+      `• \`/clearreminders\` - Cancel all active scheduled reminders\n\n` +
       `*Tips:*\n` +
       `• Powered by Cloudflare Workers AI with zero external dependencies.\n` +
-      `• Automatic resilient failover across verified Llama models.\n` +
+      `• Proactive reminders: e.g. "remind me to renew Netflix at 3 pm" or "/remind in 15m check oven".\n` +
       `• Conversation context is maintained automatically in D1.\n` +
       `• Long responses are cleanly split to comply with Telegram message limits.`;
 
@@ -229,6 +233,72 @@ const handleTelegramUpdate = async (c: any) => {
       message.message_id
     );
     return c.json({ success: true, message: 'Handled /clear' }, 200);
+  }
+
+  // /reminders command (List user's pending scheduled reminders)
+  if (text === '/reminders') {
+    if (!dbService) {
+      await sendSafeTelegramMessage(telegramClient, chatId, '⚠️ Database is unavailable.', message.message_id);
+      return c.json({ success: true, message: 'Database unavailable' }, 200);
+    }
+    const reminders = await dbService.getUserPendingReminders(sender.id);
+    if (reminders.length === 0) {
+      await sendSafeTelegramMessage(
+        telegramClient,
+        chatId,
+        '⏰ *No Active Reminders*\nYou currently have no scheduled reminders.\n\nUse `/remind in 15m check oven` or `/remind at 3pm meeting` to schedule one!',
+        message.message_id
+      );
+    } else {
+      const list = reminders
+        .map((r, i) => `${i + 1}. *${r.reminder_text}*\n   _Due: ${new Date(r.remind_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} (${new Date(r.remind_at).toLocaleDateString()})_`)
+        .join('\n\n');
+      await sendSafeTelegramMessage(
+        telegramClient,
+        chatId,
+        `⏰ *Your Active Reminders:*\n\n${list}\n\n_Use /clearreminders to cancel all._`,
+        message.message_id
+      );
+    }
+    return c.json({ success: true, message: 'Handled /reminders' }, 200);
+  }
+
+  // /clearreminders command (Cancel all pending reminders)
+  if (text === '/clearreminders') {
+    if (dbService) {
+      await dbService.clearUserReminders(sender.id);
+    }
+    await sendSafeTelegramMessage(
+      telegramClient,
+      chatId,
+      '🧹 *All active reminders cancelled.*',
+      message.message_id
+    );
+    return c.json({ success: true, message: 'Handled /clearreminders' }, 200);
+  }
+
+  // Scheduled Reminder Natural Parsing & Command Handling
+  const reminderParsed = parseReminderInput(text);
+  if (reminderParsed && dbService) {
+    await dbService.createReminder({
+      userId: sender.id,
+      chatId,
+      reminderText: reminderParsed.reminderText,
+      remindAt: reminderParsed.remindAt
+    });
+
+    const targetDate = new Date(reminderParsed.remindAt);
+    const timeFormatted = targetDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const isToday = targetDate.toDateString() === new Date().toDateString();
+    const dateFormatted = isToday ? 'today' : `on ${targetDate.toLocaleDateString()}`;
+
+    await sendSafeTelegramMessage(
+      telegramClient,
+      chatId,
+      `⏰ *Reminder Scheduled!*\n\n• *Task:* ${reminderParsed.reminderText}\n• *Time:* ${timeFormatted} (${dateFormatted})\n\nI will send you a direct message when it's time!`,
+      message.message_id
+    );
+    return c.json({ success: true, message: 'Handled reminder creation' }, 200);
   }
 
   // 5. Send typing indicator while processing AI query

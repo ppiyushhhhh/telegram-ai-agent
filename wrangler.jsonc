@@ -51,6 +51,9 @@
       "new_sqlite_classes": ["SessionDurableObject"]
     }
   ],
+  "triggers": {
+    "crons": ["* * * * *"]
+  },
   // ===========================================================================
   // Environment Configurations (UAT & LIVE)
   // ===========================================================================
@@ -96,6 +99,9 @@
           "index_name": "telegram-ai-agent-vector-uat"
         }
       ],
+      "triggers": {
+        "crons": ["* * * * *"]
+      },
       "migrations": [
         {
           "tag": "v1",
