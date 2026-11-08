@@ -62,6 +62,9 @@ const mockD1: any = {
                 const uid = args[0];
                 return { results: remindersList.filter((r) => r.user_id === uid && r.is_sent === 0) } as any;
               }
+              if (query.includes('ORDER BY created_at DESC')) {
+                return { results: [...remindersList] } as any;
+              }
               return { results: remindersList.filter((r) => r.is_sent === 0) } as any;
             }
             return { results: [] } as any;
@@ -101,6 +104,13 @@ const mockD1: any = {
             if (query.includes('UPDATE reminders') && query.includes('is_sent = 1')) {
               const r = remindersList.find((x) => x.id === args[0]);
               if (r) r.is_sent = 1;
+              return { success: true };
+            }
+            if (query.includes('DELETE FROM reminders WHERE id = ?')) {
+              const rid = args[0];
+              const remaining = remindersList.filter((r) => r.id !== rid);
+              remindersList.length = 0;
+              remindersList.push(...remaining);
               return { success: true };
             }
             if (query.includes('DELETE FROM reminders')) {
@@ -856,5 +866,46 @@ describe('Telegram AI Agent - Workers AI Integration Test Suite', () => {
     const body = await res.json<{ success: boolean; message: string }>();
     assert.equal(body.success, true);
     assert.equal(body.message, 'Handled /clearreminders');
+  });
+
+  it('GET /api/admin/reminders should return all scheduled reminders with admin key', async () => {
+    remindersList.push({
+      id: 'admin_test_rem_1',
+      user_id: 9084869490,
+      chat_id: 9084869490,
+      reminder_text: 'Admin check reminder',
+      remind_at: new Date(Date.now() + 1800000).toISOString(),
+      is_sent: 0
+    });
+
+    const res = await app.request(
+      '/api/admin/reminders',
+      {
+        method: 'GET',
+        headers: { 'x-admin-key': 'test_admin_secret_key_999' }
+      },
+      mockEnv
+    );
+
+    assert.equal(res.status, 200);
+    const body = await res.json<{ success: boolean; data: any[] }>();
+    assert.equal(body.success, true);
+    assert.ok(body.data.some((r) => r.id === 'admin_test_rem_1'));
+  });
+
+  it('DELETE /api/admin/reminders/:id should delete reminder via admin endpoint', async () => {
+    const res = await app.request(
+      '/api/admin/reminders/admin_test_rem_1',
+      {
+        method: 'DELETE',
+        headers: { 'x-admin-key': 'test_admin_secret_key_999' }
+      },
+      mockEnv
+    );
+
+    assert.equal(res.status, 200);
+    const body = await res.json<{ success: boolean; message: string }>();
+    assert.equal(body.success, true);
+    assert.ok(body.message.includes('admin_test_rem_1'));
   });
 });

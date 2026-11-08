@@ -84,6 +84,17 @@ export interface AdminAuditLog {
   created_at: string;
 }
 
+export interface AdminReminder {
+  id: string;
+  user_id: number;
+  chat_id: number;
+  reminder_text: string;
+  remind_at: string;
+  is_sent: number;
+  created_at: string;
+  sent_at?: string | null;
+}
+
 export class DashboardApiClient {
   constructor(private baseUrl: string = '', private adminKey: string = '') {}
 
@@ -146,6 +157,14 @@ export class DashboardApiClient {
 
   public async getLogs(): Promise<AdminAuditLog[]> {
     return this.request<AdminAuditLog[]>('/api/admin/logs');
+  }
+
+  public async getReminders(): Promise<AdminReminder[]> {
+    return this.request<AdminReminder[]>('/api/admin/reminders');
+  }
+
+  public async deleteReminder(id: string): Promise<void> {
+    await this.request(`/api/admin/reminders/${id}`, { method: 'DELETE' });
   }
 
   public async getTelegramWebhookInfo(): Promise<unknown> {

@@ -127,6 +127,26 @@ adminRouter.get('/logs', async (c) => {
   return c.json({ success: true, data: logs });
 });
 
+// 4b. Reminders Management
+adminRouter.get('/reminders', async (c) => {
+  if (!c.env.DB) {
+    return c.json({ success: false, error: 'Database binding unavailable' }, 500);
+  }
+  const db = new DatabaseService(c.env.DB);
+  const reminders = await db.getAllReminders(100);
+  return c.json({ success: true, data: reminders });
+});
+
+adminRouter.delete('/reminders/:id', async (c) => {
+  if (!c.env.DB) {
+    return c.json({ success: false, error: 'Database binding unavailable' }, 500);
+  }
+  const reminderId = c.req.param('id');
+  const db = new DatabaseService(c.env.DB);
+  await db.deleteReminder(reminderId);
+  return c.json({ success: true, message: `Reminder ${reminderId} removed` });
+});
+
 // 5. Configuration & Model Settings
 adminRouter.get('/config', (c) => {
   const primaryProvider = 'workers-ai';

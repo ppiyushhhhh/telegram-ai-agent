@@ -416,4 +416,30 @@ export class DatabaseService {
       .bind(userId)
       .run();
   }
+
+  /**
+   * Retrieves all reminders across all users for admin review.
+   */
+  public async getAllReminders(limit: number = 50): Promise<DbReminder[]> {
+    const res = await this.db
+      .prepare(
+        `SELECT * FROM reminders
+         ORDER BY created_at DESC
+         LIMIT ?`
+      )
+      .bind(limit)
+      .all<DbReminder>();
+    return res.results || [];
+  }
+
+  /**
+   * Deletes a specific reminder by ID.
+   */
+  public async deleteReminder(id: string): Promise<boolean> {
+    const res = await this.db
+      .prepare('DELETE FROM reminders WHERE id = ?')
+      .bind(id)
+      .run();
+    return res.success;
+  }
 }

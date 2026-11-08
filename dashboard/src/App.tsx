@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { LayoutDashboard, Users, MessageSquare, ShieldAlert, Cpu } from 'lucide-react';
+import { LayoutDashboard, Users, MessageSquare, ShieldAlert, Cpu, Bell } from 'lucide-react';
 import {
   api,
   DEFAULT_ADMIN_KEY,
@@ -7,7 +7,8 @@ import {
   type SystemOverview,
   type AdminUser,
   type AdminConversation,
-  type AdminAuditLog
+  type AdminAuditLog,
+  type AdminReminder
 } from './services/api';
 import { Header } from './components/Header';
 import { HealthMonitor } from './components/HealthMonitor';
@@ -15,9 +16,10 @@ import { UserWhitelist } from './components/UserWhitelist';
 import { ConversationList } from './components/ConversationList';
 import { AuditLogView } from './components/AuditLogView';
 import { AiMemorySettings } from './components/AiMemorySettings';
+import { ReminderList } from './components/ReminderList';
 
 export const App: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<'overview' | 'whitelist' | 'conversations' | 'logs' | 'ai'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'whitelist' | 'conversations' | 'reminders' | 'logs' | 'ai'>('overview');
   const [adminKey, setAdminKey] = useState<string>(() => localStorage.getItem('tg_admin_key') || DEFAULT_ADMIN_KEY);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -27,6 +29,7 @@ export const App: React.FC = () => {
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [conversations, setConversations] = useState<AdminConversation[]>([]);
   const [logs, setLogs] = useState<AdminAuditLog[]>([]);
+  const [reminders, setReminders] = useState<AdminReminder[]>([]);
 
   const handleAdminKeyChange = (key: string) => {
     setAdminKey(key);
@@ -50,16 +53,18 @@ export const App: React.FC = () => {
       // Authenticated endpoints require admin key
       if (adminKey) {
         try {
-          const [overviewData, usersData, convsData, logsData] = await Promise.all([
+          const [overviewData, usersData, convsData, logsData, remindersData] = await Promise.all([
             api.getOverview(),
             api.getUsers(),
             api.getConversations(),
-            api.getLogs()
+            api.getLogs(),
+            api.getReminders().catch(() => [])
           ]);
           setOverview(overviewData);
           setUsers(usersData);
           setConversations(convsData);
           setLogs(logsData);
+          setReminders(remindersData);
         } catch (authErr) {
           if (authErr instanceof Error) {
             setErrorMessage(authErr.message);
@@ -89,6 +94,11 @@ export const App: React.FC = () => {
 
   const handleSelectConversation = async (id: string) => {
     return api.getMessages(id);
+  };
+
+  const handleDeleteReminder = async (id: string) => {
+    await api.deleteReminder(id);
+    setReminders((prev) => prev.filter((r) => r.id !== id));
   };
 
   return (
@@ -150,6 +160,13 @@ export const App: React.FC = () => {
             <span>Conversations ({conversations.length})</span>
           </button>
           <button
+            className={`tab-btn ${activeTab === 'reminders' ? 'active' : ''}`}
+            onClick={() => setActiveTab('reminders')}
+          >
+            <Bell size={16} />
+            <span>Reminders ({reminders.length})</span>
+          </button>
+          <button
             className={`tab-btn ${activeTab === 'logs' ? 'active' : ''}`}
             onClick={() => setActiveTab('logs')}
           >
@@ -174,6 +191,9 @@ export const App: React.FC = () => {
             conversations={conversations}
             onSelectConversation={handleSelectConversation}
           />
+        )}
+        {activeTab === 'reminders' && (
+          <ReminderList reminders={reminders} onDeleteReminder={handleDeleteReminder} />
         )}
         {activeTab === 'logs' && <AuditLogView logs={logs} />}
         {activeTab === 'ai' && <AiMemorySettings health={health} />}
