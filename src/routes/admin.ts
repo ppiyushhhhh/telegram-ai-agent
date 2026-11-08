@@ -160,16 +160,17 @@ adminRouter.post('/telegram/set-webhook', async (c) => {
   if (!c.env.TELEGRAM_BOT_TOKEN || !c.env.TELEGRAM_WEBHOOK_SECRET) {
     return c.json({ success: false, error: 'Telegram bot token or webhook secret is not configured' }, 400);
   }
-  const body = (await c.req.json().catch(() => ({}))) as { url?: string };
-  const url = body.url;
-  if (!url || !url.startsWith('https://')) {
+  const body = (await c.req.json().catch(() => ({}))) as { url?: string; webhookUrl?: string };
+  const rawUrl = body.url || body.webhookUrl;
+  if (!rawUrl || !rawUrl.startsWith('https://')) {
     return c.json({ success: false, error: 'A valid HTTPS worker URL is required to register the Telegram webhook' }, 400);
   }
-  const webhookUrl = `${url.replace(/\/$/, '')}/webhooks/telegram`;
+  const cleanUrl = rawUrl.replace(/\/webhooks\/telegram\/?$/, '').replace(/\/$/, '');
+  const webhookUrl = `${cleanUrl}/webhooks/telegram`;
   const telegramClient = new TelegramClient(c.env.TELEGRAM_BOT_TOKEN);
   const result = await telegramClient.setWebhook({
     url: webhookUrl,
-    secret_token: c.env.TELEGRAM_WEBHOOK_SECRET,
+    secret_token: c.env.TELEGRAM_WEBHOOK_SECRET?.trim(),
     allowed_updates: ['message']
   });
   return c.json({ success: true, message: 'Telegram webhook configured successfully', webhookUrl, result });

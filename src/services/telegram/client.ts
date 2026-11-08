@@ -9,11 +9,12 @@ import { ERROR_CODES } from '../../config/constants';
 export class TelegramClient {
   private readonly baseUrl: string;
 
-  constructor(private readonly botToken: string) {
-    if (!botToken) {
+  constructor(botToken: string) {
+    const cleanToken = botToken?.trim();
+    if (!cleanToken) {
       throw new AppError('Telegram Bot Token is required', 500, ERROR_CODES.INVALID_CONFIG);
     }
-    this.baseUrl = `https://api.telegram.org/bot${botToken}`;
+    this.baseUrl = `https://api.telegram.org/bot${cleanToken}`;
   }
 
   private async call<T>(method: string, payload?: Record<string, unknown>): Promise<T> {

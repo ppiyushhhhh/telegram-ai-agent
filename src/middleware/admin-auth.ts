@@ -11,8 +11,8 @@ export const adminAuthMiddleware: MiddlewareHandler<{
   Bindings: Env;
   Variables: AppVariables;
 }> = async (c, next) => {
-  const adminKeyHeader = c.req.header('x-admin-key');
-  const expectedKey = c.env.ADMIN_API_KEY;
+  const adminKeyHeader = c.req.header('x-admin-key')?.trim();
+  const expectedKey = c.env.ADMIN_API_KEY?.trim();
 
   if (!expectedKey) {
     throw new AppError(

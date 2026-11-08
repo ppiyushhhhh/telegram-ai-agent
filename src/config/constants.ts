@@ -6,7 +6,7 @@ export const APP_NAME = 'telegram-ai-agent';
 export const APP_VERSION = '0.2.0';
 
 export const DEFAULT_BOT_NAME = 'Piyush AI Assistant';
-export const DEFAULT_BOT_USERNAME = 'PiyushPersonalAssistantBot';
+export const DEFAULT_BOT_USERNAME = 'ppiyushhhhBot';
 export const DEFAULT_ALLOWED_USER_ID = '9084869490';
 
 // Primary AI provider is Gemini; Workers AI is the edge-native zero-credential secondary provider; OpenAI is optional tertiary

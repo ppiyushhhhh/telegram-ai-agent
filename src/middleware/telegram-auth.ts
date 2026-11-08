@@ -11,8 +11,8 @@ export const telegramWebhookAuthMiddleware: MiddlewareHandler<{
   Bindings: Env;
   Variables: AppVariables;
 }> = async (c, next) => {
-  const secretHeader = c.req.header(TELEGRAM_HEADER_SECRET_TOKEN);
-  const expectedSecret = c.env.TELEGRAM_WEBHOOK_SECRET;
+  const secretHeader = c.req.header(TELEGRAM_HEADER_SECRET_TOKEN)?.trim();
+  const expectedSecret = c.env.TELEGRAM_WEBHOOK_SECRET?.trim();
 
   if (!expectedSecret) {
     throw new AppError(

@@ -72,7 +72,7 @@
         "AI_TEMPERATURE": "0.7",
         "MAX_TOKENS": "1000",
         "RATE_LIMIT_PER_MINUTE": "30",
-        "TELEGRAM_BOT_USERNAME": "PiyushPersonalAssistantBot",
+        "TELEGRAM_BOT_USERNAME": "ppiyushhhhBot",
         "ALLOWED_TELEGRAM_USER_IDS": "9084869490"
       },
       "ai": {
